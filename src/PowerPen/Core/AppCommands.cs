@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using PowerPen.Capture;
 using PowerPen.Input;
 using PowerPen.Interop;
 using PowerPen.Overlay;
@@ -15,14 +16,38 @@ public sealed class AppCommands
     private readonly AppState _state;
     private readonly OverlayManager _overlays;
     private readonly UndoManager _undo;
+    private readonly ScreenshotService _screenshots;
     private readonly FocusRestorer _focus = new();
 
-    /// <summary>Creates the command set over the shared state, overlays, and undo history.</summary>
-    public AppCommands(AppState state, OverlayManager overlays, UndoManager undo)
+    /// <summary>Creates the command set over the shared state, overlays, undo history, and screenshots.</summary>
+    public AppCommands(AppState state, OverlayManager overlays, UndoManager undo, ScreenshotService screenshots)
     {
         _state = state;
         _overlays = overlays;
         _undo = undo;
+        _screenshots = screenshots;
+    }
+
+    /// <summary>
+    /// Takes a screenshot (drag an area or click a screen). Works in both modes, and afterwards puts focus back
+    /// where it was: on the overlay if you were drawing, otherwise on the app you were using.
+    /// </summary>
+    public async Task TakeScreenshotAsync()
+    {
+        // Finish any text being typed so it's in the picture.
+        _overlays.FinishTextEditing();
+
+        bool wasDrawing = _state.IsDrawMode;
+        var focus = new FocusRestorer(); // Separate from Draw mode's, which must keep its own remembered app.
+        focus.Remember();
+
+        await _screenshots.TakeAsync();
+
+        // The selection windows took focus while they were up.
+        if (wasDrawing && _state.IsDrawMode)
+            _overlays.ActivateOverlayUnderCursor();
+        else
+            focus.Restore();
     }
 
     /// <summary>Selects a drawing tool and starts drawing with it.</summary>

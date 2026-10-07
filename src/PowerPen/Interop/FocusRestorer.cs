@@ -29,7 +29,7 @@ public sealed class FocusRestorer
     }
 
     /// <summary>True if the window belongs to this PowerPen process.</summary>
-    private static bool IsOwnWindow(IntPtr hwnd)
+    public static bool IsOwnWindow(IntPtr hwnd)
     {
         NativeMethods.GetWindowThreadProcessId(hwnd, out uint processId);
         return processId == Environment.ProcessId;

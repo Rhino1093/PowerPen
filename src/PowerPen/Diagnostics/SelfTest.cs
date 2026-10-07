@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PowerPen.Capture;
 using PowerPen.Core;
@@ -23,7 +24,8 @@ namespace PowerPen.Diagnostics;
 /// </summary>
 /// <remarks>
 /// Uses default settings and never reads or writes the user's settings file.
-/// Screenshots are only inspected in memory and never saved, so nothing on the user's screen is stored.
+/// Screenshots are only inspected in memory and never saved (the 📷 flow runs in dry-run mode), so nothing on the
+/// user's screen is stored and the clipboard is never replaced.
 /// The test briefly shows the toolbar and a magenta line on each monitor. It clicks the toolbar's Pen button and
 /// presses keys (moving the mouse for a few seconds), only after confirming those inputs can only reach PowerPen.
 /// </remarks>
@@ -64,9 +66,10 @@ public static class SelfTest
 
         report.AppendLine($"PowerPen self-test  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Windows {Environment.OSVersion.Version}, .NET {Environment.Version}");
-        report.AppendLine("Tip: using the mouse or keyboard while the test runs (about 20 seconds) can cause false failures.");
+        report.AppendLine("Tip: using the mouse or keyboard while the test runs (about 30 seconds) can cause false failures.");
 
         using var host = new AppHost(new AppSettings());
+        host.Screenshots.DryRun = true; // Screenshots stay in memory: nothing saved to disk, clipboard untouched.
         host.Start();
         IReadOnlyList<OverlayWindow> overlays = host.Overlays.Overlays;
         OverlayWindow mainOverlay = overlays.FirstOrDefault(o => o.TargetMonitor.IsPrimary) ?? overlays[0];
@@ -181,6 +184,12 @@ public static class SelfTest
         host.Commands.EnterPointerMode();
         await WaitForScreenAsync();
         bool focusRestoredAfterShapes = NativeMethods.GetForegroundWindow() == originalForeground;
+
+        // --- Screenshots, through the 📷 button.
+        var screenshotResults = new List<(string Description, bool Passed)>();
+        string? screenshotSkipReason = await RunScreenshotChecksAsync(host, overlays, mainOverlay, screenshotResults);
+        await WaitForScreenAsync();
+        bool focusRestoredAfterScreenshots = NativeMethods.GetForegroundWindow() == originalForeground;
         NativeMethods.SetCursorPos(originalCursor.X, originalCursor.Y);
 
         // --- Per-monitor results.
@@ -252,6 +261,14 @@ public static class SelfTest
         Check(focusRestoredAfterShapes, "Focus returns to your app afterwards");
 
         report.AppendLine();
+        report.AppendLine("Screenshots (kept in memory: nothing saved, clipboard untouched)");
+        if (screenshotSkipReason != null)
+            Skip("Screenshots", screenshotSkipReason);
+        foreach ((string description, bool passed) in screenshotResults)
+            Check(passed, description);
+        Check(focusRestoredAfterScreenshots, "Focus returns to your app afterwards");
+
+        report.AppendLine();
         report.AppendLine("Unexpected errors");
         Check(UnhandledErrors.Count == 0, $"No unexpected errors ({UnhandledErrors.Count} found)");
         foreach (string error in UnhandledErrors)
@@ -259,7 +276,9 @@ public static class SelfTest
 
         report.AppendLine();
         report.AppendLine(allPassed ? "RESULT: ALL PASSED" : "RESULT: FAILURES FOUND");
-        File.WriteAllText(reportPath, report.ToString());
+
+        // UTF-8 with a byte-order mark, so Notepad and Windows PowerShell show 📷 and × correctly instead of garbage.
+        File.WriteAllText(reportPath, report.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
         return allPassed;
     }
 
@@ -371,6 +390,148 @@ public static class SelfTest
         return null;
     }
 
+    /// <summary>
+    /// Checks that the toolbar is invisible to captures, then takes three screenshots with the 📷 button:
+    /// a dragged area, a whole screen (single click), and a cancelled one (Esc). The selection windows cover
+    /// every monitor, so synthetic clicks and drags can only land on PowerPen; keys are only sent while a
+    /// PowerPen window has focus.
+    /// </summary>
+    /// <returns>Null if the checks ran; otherwise why they were skipped.</returns>
+    private static async Task<string?> RunScreenshotChecksAsync(
+        AppHost host, IReadOnlyList<OverlayWindow> overlays, OverlayWindow main, List<(string Description, bool Passed)> results)
+    {
+        PixelRect area = main.TargetMonitor.Bounds;
+        NativeMethods.POINT At(double fx, double fy) =>
+            new() { X = area.X + (int)(area.Width * fx), Y = area.Y + (int)(area.Height * fy) };
+
+        // Toolbar hidden from captures: put a magenta line on the overlay right under the toolbar. If the toolbar is
+        // excluded, a capture of its area shows the line; if not, it shows the toolbar's dark buttons instead.
+        NativeMethods.GetWindowRect(host.Toolbar.Handle, out NativeMethods.RECT toolbar);
+        PixelRect toolbarArea = PixelRect.FromRect(toolbar);
+        int toolbarMiddle = toolbarArea.Y + toolbarArea.Height / 2;
+        Point lineStart = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.X - 20, Y = toolbarMiddle });
+        Point lineEnd = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.Right + 20, Y = toolbarMiddle });
+        Stroke underToolbar = CreateMarkerLine(lineStart, lineEnd);
+        main.Strokes.Add(underToolbar);
+        await WaitForScreenAsync();
+        int visibleThroughToolbar;
+        using (Drawing.Bitmap shot = ScreenCapture.Capture(toolbarArea))
+        {
+            visibleThroughToolbar = SampleFractions.Count(f =>
+            {
+                Drawing.Color pixel = shot.GetPixel((int)(shot.Width * f), shot.Height / 2);
+                return IsMarkerColor(pixel.R, pixel.G, pixel.B);
+            });
+        }
+        main.Strokes.Remove(underToolbar);
+        results.Add(($"Toolbar is left out of screenshots and screen shares ({visibleThroughToolbar}/{SampleFractions.Length} points showed what's underneath)",
+            visibleThroughToolbar >= SampleFractions.Length - 1));
+
+        NativeMethods.POINT cameraButton = ScreenPoint(host.Toolbar.ButtonScreenCenter("ScreenshotButton"));
+
+        // Clicks 📷 and waits until every monitor is covered by a selection window. Returns false if not.
+        async Task<bool> StartScreenshotAsync()
+        {
+            if (NativeMethods.WindowFromPoint(cameraButton) != host.Toolbar.Handle)
+                return false;
+            SyntheticInput.ClickAt(cameraButton);
+            for (int i = 0; i < 20; i++) // Up to 2 seconds.
+            {
+                await Task.Delay(100);
+                if (overlays.All(o => IsSelectionWindowAt(o.TargetMonitor, overlays, host)))
+                    return true;
+            }
+            return false;
+        }
+
+        // 1. Drag an area that crosses the magenta marker line (at mid-height).
+        Task<ScreenshotOutcome> next = NextOutcomeAsync(host.Screenshots);
+        if (!await StartScreenshotAsync())
+            return "clicking 📷 didn't cover every monitor with a selection screen";
+        results.Add(("Clicking 📷 freezes every monitor for selecting", true));
+
+        NativeMethods.POINT from = At(0.30, 0.40), to = At(0.50, 0.60);
+        await SyntheticInput.DragAsync(from, to);
+        ScreenshotOutcome? dragged = await WithTimeoutAsync(next);
+        BitmapSource? draggedImage = dragged?.Image;
+        bool rightSize = draggedImage != null
+            && Math.Abs(draggedImage.PixelWidth - (to.X - from.X)) <= 2
+            && Math.Abs(draggedImage.PixelHeight - (to.Y - from.Y)) <= 2;
+        results.Add(($"Dragging captures exactly that area ({draggedImage?.PixelWidth ?? 0}×{draggedImage?.PixelHeight ?? 0} px)", rightSize));
+        bool hasInk = draggedImage != null && new[] { 0.25, 0.50, 0.75 }
+            .Count(f => IsMarkerAt(draggedImage, (int)(draggedImage.PixelWidth * f), draggedImage.PixelHeight / 2)) >= 2;
+        results.Add(("The screenshot includes the ink", hasInk));
+
+        // 2. A single click captures that whole monitor.
+        next = NextOutcomeAsync(host.Screenshots);
+        if (!await StartScreenshotAsync())
+            return "the second 📷 click didn't show the selection screens";
+        SyntheticInput.ClickAt(At(0.70, 0.30));
+        BitmapSource? fullImage = (await WithTimeoutAsync(next))?.Image;
+        results.Add(($"Clicking captures the whole screen ({fullImage?.PixelWidth ?? 0}×{fullImage?.PixelHeight ?? 0} px)",
+            fullImage != null && fullImage.PixelWidth == area.Width && fullImage.PixelHeight == area.Height));
+
+        // 3. Esc cancels and removes the selection screens.
+        next = NextOutcomeAsync(host.Screenshots);
+        if (!await StartScreenshotAsync())
+            return "the third 📷 click didn't show the selection screens";
+        if (FocusRestorer.IsOwnWindow(NativeMethods.GetForegroundWindow()))
+            SyntheticInput.PressKey(Key.Escape);
+        ScreenshotOutcome? cancelled = await WithTimeoutAsync(next);
+        await WaitForScreenAsync();
+        bool selectionGone = !overlays.Any(o => IsSelectionWindowAt(o.TargetMonitor, overlays, host));
+        results.Add(("Esc cancels and closes the selection screens", cancelled != null && cancelled.Image == null && selectionGone));
+        return null;
+    }
+
+    /// <summary>
+    /// True if the window at the center of <paramref name="monitor"/> is a PowerPen window that isn't an overlay
+    /// or the toolbar, i.e. a screenshot selection window.
+    /// </summary>
+    private static bool IsSelectionWindowAt(DisplayMonitor monitor, IReadOnlyList<OverlayWindow> overlays, AppHost host)
+    {
+        PixelRect b = monitor.Bounds;
+        IntPtr hwnd = NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = b.X + b.Width / 2, Y = b.Y + b.Height / 2 });
+        return FocusRestorer.IsOwnWindow(hwnd) && !IsOverlay(overlays, hwnd) && hwnd != host.Toolbar.Handle;
+    }
+
+    /// <summary>Returns a task that completes with the next screenshot outcome.</summary>
+    private static Task<ScreenshotOutcome> NextOutcomeAsync(ScreenshotService service)
+    {
+        var result = new TaskCompletionSource<ScreenshotOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnCompleted(object? sender, ScreenshotOutcome outcome)
+        {
+            service.Completed -= OnCompleted;
+            result.TrySetResult(outcome);
+        }
+        service.Completed += OnCompleted;
+        return result.Task;
+    }
+
+    /// <summary>Waits up to 5 seconds for <paramref name="task"/>; returns null if it doesn't finish in time.</summary>
+    private static async Task<T?> WithTimeoutAsync<T>(Task<T> task) where T : class =>
+        await Task.WhenAny(task, Task.Delay(5000)) == task ? await task : null;
+
+    /// <summary>True if the pixel at (<paramref name="x"/>, <paramref name="y"/>) of an in-memory image is the marker color.</summary>
+    private static bool IsMarkerAt(BitmapSource image, int x, int y)
+    {
+        // Convert to a known 4-bytes-per-pixel layout (blue, green, red, alpha) so any source format can be read.
+        var pixel = new byte[4];
+        new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0).CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+        return IsMarkerColor(pixel[2], pixel[1], pixel[0]);
+    }
+
+    /// <summary>Creates a thick marker-colored line between two overlay points.</summary>
+    private static Stroke CreateMarkerLine(Point start, Point end) =>
+        new(new StylusPointCollection([new StylusPoint(start.X, start.Y), new StylusPoint(end.X, end.Y)]), new DrawingAttributes
+        {
+            Color = MarkerColor,
+            Width = 24,
+            Height = 24,
+            FitToCurve = false,
+            IgnorePressure = true,
+        });
+
     /// <summary>The finished text item on <paramref name="overlay"/> reading <paramref name="text"/> (any case), if any.</summary>
     private static TextBox? FindText(OverlayWindow overlay, string text) =>
         overlay.TextItems.FirstOrDefault(t => t.Text.Equals(text, StringComparison.OrdinalIgnoreCase));
@@ -457,12 +618,16 @@ public static class SelfTest
     private static bool IsMarkerPixel(Drawing.Bitmap shot, double xFraction)
     {
         Drawing.Color pixel = shot.GetPixel((int)(shot.Width * xFraction), shot.Height / 2);
+        return IsMarkerColor(pixel.R, pixel.G, pixel.B);
+    }
 
-        // Small tolerance for color-management or rounding differences.
+    /// <summary>True if a red/green/blue value is the marker color, with a small tolerance for rounding.</summary>
+    private static bool IsMarkerColor(int red, int green, int blue)
+    {
         const int tolerance = 12;
-        return Math.Abs(pixel.R - MarkerColor.R) <= tolerance
-            && Math.Abs(pixel.G - MarkerColor.G) <= tolerance
-            && Math.Abs(pixel.B - MarkerColor.B) <= tolerance;
+        return Math.Abs(red - MarkerColor.R) <= tolerance
+            && Math.Abs(green - MarkerColor.G) <= tolerance
+            && Math.Abs(blue - MarkerColor.B) <= tolerance;
     }
 
     /// <summary>Lets WPF finish rendering and gives Windows' compositor time to put the result on screen.</summary>

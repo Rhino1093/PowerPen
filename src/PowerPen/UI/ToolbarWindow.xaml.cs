@@ -28,6 +28,11 @@ public partial class ToolbarWindow : Window
     public IntPtr Handle => _hwnd;
 
     /// <summary>
+    /// Keep the toolbar out of screenshots and screen shares (Teams, Zoom). Set before the window is shown.
+    /// </summary>
+    public bool HideFromCapture { get; init; } = true;
+
+    /// <summary>
     /// Moves the toolbar back to the top of the always-on-top windows. Needed because an overlay jumps above
     /// it whenever the overlay is shown or clicked, which would leave the toolbar visible but unclickable.
     /// </summary>
@@ -82,6 +87,11 @@ public partial class ToolbarWindow : Window
         // or from the overlay while drawing (which needs it for keys and typing).
         // TOOLWINDOW: keep the toolbar out of Alt+Tab.
         NativeMethods.AddExtendedStyle(_hwnd, NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW);
+
+        // Windows leaves the toolbar out of every capture (our screenshots, Snipping Tool, Teams/Zoom sharing)
+        // while still showing it on the monitor. No need to hide it and flash it back for each screenshot.
+        if (HideFromCapture)
+            NativeMethods.SetWindowDisplayAffinity(_hwnd, NativeMethods.WDA_EXCLUDEFROMCAPTURE);
 
         PlaceAtDefaultPosition();
         // WPF may still move the window while it finishes showing it; place it again once that's done.

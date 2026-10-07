@@ -196,6 +196,35 @@ internal static class NativeMethods
 
     #endregion
 
+    #region Capture exclusion and known folders
+
+    /// <summary>Display affinity: the window shows normally everywhere.</summary>
+    public const uint WDA_NONE = 0x0;
+
+    /// <summary>
+    /// Display affinity (Windows 10 2004+): the window shows on the monitor but is left out of screenshots,
+    /// recordings, and screen sharing.
+    /// </summary>
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
+    /// <summary>Sets whether a window appears in screen captures.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    /// <summary>Known-folder ID for the user's Downloads folder (wherever it's been redirected to).</summary>
+    public static readonly Guid FOLDERID_Downloads = new("374DE290-123F-4565-9164-39C4925E467B");
+
+    /// <summary>Gets the real path of a known folder. Returns 0 (S_OK) on success; free the path with <see cref="CoTaskMemFree"/>.</summary>
+    [DllImport("shell32.dll")]
+    public static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, IntPtr hToken, out IntPtr ppszPath);
+
+    /// <summary>Frees memory allocated by the system for us (e.g. a known-folder path).</summary>
+    [DllImport("ole32.dll")]
+    public static extern void CoTaskMemFree(IntPtr pv);
+
+    #endregion
+
     #region Screen capture
 
     /// <summary>Gets a device context for a window; <see cref="IntPtr.Zero"/> means the entire screen.</summary>

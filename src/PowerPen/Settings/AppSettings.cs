@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Input;
 using System.Windows.Media;
 using PowerPen.Input;
@@ -27,6 +28,18 @@ public sealed class AppSettings
 
     /// <summary>System-wide hotkeys.</summary>
     public HotkeySettings Hotkeys { get; set; } = new();
+
+    /// <summary>
+    /// Where screenshots are saved. Empty means the Downloads folder. Environment variables work,
+    /// e.g. "%USERPROFILE%\Pictures\Screenshots".
+    /// </summary>
+    public string ScreenshotFolder { get; set; } = "";
+
+    /// <summary>Also copy each screenshot to the clipboard, ready to paste.</summary>
+    public bool CopyScreenshotToClipboard { get; set; } = true;
+
+    /// <summary>Keep the toolbar out of screenshots and screen shares (Teams, Zoom).</summary>
+    public bool HideToolbarFromCapture { get; set; } = true;
 
     /// <summary>The 8 default colors.</summary>
     public static List<ColorSetting> DefaultColors() =>
@@ -80,6 +93,38 @@ public sealed class AppSettings
         }
 
         ValidateHotkeys(problems);
+        ValidateScreenshotFolder(problems);
+    }
+
+    /// <summary>
+    /// Checks that the screenshot folder is empty (Downloads) or a full path. Whether it exists is only checked
+    /// when saving, because a network or USB drive may simply not be connected yet when PowerPen starts.
+    /// </summary>
+    private void ValidateScreenshotFolder(List<string> problems)
+    {
+        if (string.IsNullOrWhiteSpace(ScreenshotFolder))
+        {
+            ScreenshotFolder = "";
+            return;
+        }
+
+        string expanded = Environment.ExpandEnvironmentVariables(ScreenshotFolder);
+        bool isFullPath;
+        try
+        {
+            isFullPath = Path.IsPathFullyQualified(expanded) && expanded.IndexOfAny(Path.GetInvalidPathChars()) < 0;
+        }
+        catch (ArgumentException)
+        {
+            isFullPath = false;
+        }
+
+        if (!isFullPath)
+        {
+            problems.Add($"\"screenshotFolder\" (\"{ScreenshotFolder}\") must be a full folder path like C:\\Users\\you\\Pictures, " +
+                         "or empty for Downloads. Using Downloads.");
+            ScreenshotFolder = "";
+        }
     }
 
     /// <summary>Checks the palette: 1–8 entries, each a valid color. Any problem restores all default colors.</summary>

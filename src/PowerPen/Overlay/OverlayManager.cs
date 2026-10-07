@@ -107,6 +107,13 @@ public sealed class OverlayManager : IDisposable
     /// <summary>Focuses the overlay on the monitor under the mouse, so it receives keys like Esc.</summary>
     public void ActivateOverlayUnderCursor() => OverlayUnderCursor()?.Activate();
 
+    /// <summary>Finishes any text being typed on any monitor.</summary>
+    public void FinishTextEditing()
+    {
+        foreach (OverlayWindow overlay in _overlays)
+            overlay.FinishTextEditing();
+    }
+
     /// <summary>Removes all ink and text from every monitor as a single undo step.</summary>
     public void ClearAll()
     {

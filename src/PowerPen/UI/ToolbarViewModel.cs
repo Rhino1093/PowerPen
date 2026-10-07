@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,19 +28,22 @@ public sealed partial class ToolbarViewModel : ObservableObject
     private readonly AppState _state;
     private readonly AppCommands _commands;
     private readonly UndoManager _undo;
+    private readonly AppSettings _settings;
     private readonly HotkeySettings _hotkeys;
 
     /// <summary>Creates the toolbar's view model.</summary>
     /// <param name="state">The shared app state.</param>
     /// <param name="commands">Where button clicks go.</param>
     /// <param name="undo">Undo history (enables/disables the Undo button).</param>
-    /// <param name="hotkeys">Validated global hotkeys, shown in tooltips.</param>
-    public ToolbarViewModel(AppState state, AppCommands commands, UndoManager undo, HotkeySettings hotkeys)
+    /// <param name="settings">Validated settings (hotkeys and screenshot options, shown in tooltips).</param>
+    public ToolbarViewModel(AppState state, AppCommands commands, UndoManager undo, AppSettings settings)
     {
         _state = state;
         _commands = commands;
         _undo = undo;
-        _hotkeys = hotkeys;
+        _settings = settings;
+        _hotkeys = settings.Hotkeys;
+        HotkeySettings hotkeys = settings.Hotkeys;
 
         // Color hotkeys exist only when colorModifiers is set (it's empty when turned off).
         bool hasColorHotkeys = Hotkey.TryParseModifiers(hotkeys.ColorModifiers, out ModifierKeys colorModifiers, out _);
@@ -137,6 +141,20 @@ public sealed partial class ToolbarViewModel : ObservableObject
     /// <summary>Tooltip for the Clear all button.</summary>
     public string ClearAllToolTip => Tip("Clear all ink", "Delete", _hotkeys.ClearAll);
 
+    /// <summary>Tooltip for the Screenshot button, including where pictures go.</summary>
+    public string ScreenshotToolTip
+    {
+        get
+        {
+            // "Downloads" by default, otherwise the last part of the chosen folder (e.g. "Screenshots").
+            string folder = string.IsNullOrWhiteSpace(_settings.ScreenshotFolder)
+                ? "Downloads"
+                : Path.GetFileName(Path.TrimEndingDirectorySeparator(Environment.ExpandEnvironmentVariables(_settings.ScreenshotFolder)));
+            string clipboard = _settings.CopyScreenshotToClipboard ? ", and copied to the clipboard" : "";
+            return $"Screenshot: drag an area, or click a screen\nSaved to {folder}{clipboard}";
+        }
+    }
+
     /// <summary>Switches to Pointer mode.</summary>
     [RelayCommand]
     private void Pointer() => _commands.EnterPointerMode();
@@ -160,6 +178,13 @@ public sealed partial class ToolbarViewModel : ObservableObject
     /// <summary>Clears all ink.</summary>
     [RelayCommand]
     private void ClearAll() => _commands.ClearAll();
+
+    /// <summary>
+    /// Takes a screenshot. As an async command, the button is disabled until the screenshot is finished,
+    /// so a double-click can't start two.
+    /// </summary>
+    [RelayCommand]
+    private Task Screenshot() => _commands.TakeScreenshotAsync();
 
     /// <summary>Whether the Undo button is enabled.</summary>
     private bool CanUndo => _undo.CanUndo;

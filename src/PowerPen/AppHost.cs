@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using PowerPen.Capture;
 using PowerPen.Core;
 using PowerPen.Overlay;
 using PowerPen.Settings;
@@ -20,8 +21,12 @@ public sealed class AppHost : IDisposable
         State = new AppState(settings);
         Undo = new UndoManager();
         Overlays = new OverlayManager(State, Undo);
-        Commands = new AppCommands(State, Overlays, Undo);
-        Toolbar = new ToolbarWindow(new ToolbarViewModel(State, Commands, Undo, settings.Hotkeys));
+        Screenshots = new ScreenshotService(settings);
+        Commands = new AppCommands(State, Overlays, Undo, Screenshots);
+        Toolbar = new ToolbarWindow(new ToolbarViewModel(State, Commands, Undo, settings))
+        {
+            HideFromCapture = settings.HideToolbarFromCapture,
+        };
 
         // Overlays jump above the toolbar whenever they're shown or clicked; put the toolbar back on top.
         Overlays.OverlaysRaised += (_, _) => Toolbar.BringToFront();
@@ -46,6 +51,9 @@ public sealed class AppHost : IDisposable
 
     /// <summary>The per-monitor ink overlays.</summary>
     public OverlayManager Overlays { get; }
+
+    /// <summary>The 📷 flow.</summary>
+    public ScreenshotService Screenshots { get; }
 
     /// <summary>Every user action.</summary>
     public AppCommands Commands { get; }

@@ -178,7 +178,7 @@
 
             <Rectangle Style="{StaticResource Divider}" />
 
-            <!-- Actions. The empty fourth slot is where the screenshot button goes in Phase 4. -->
+            <!-- Actions -->
             <UniformGrid Columns="2">
                 <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE7A7;"
                                Command="{Binding UndoCommand}" ToolTip="{Binding UndoToolTip}" />
@@ -187,6 +187,8 @@
                                ToolTip="{Binding InkToggleToolTip}" />
                 <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE74D;"
                                Command="{Binding ClearAllCommand}" ToolTip="{Binding ClearAllToolTip}" />
+                <ui:ToolButton x:Name="ScreenshotButton" Style="{StaticResource ToolButtonStyle}" Content="&#xE722;"
+                               Command="{Binding ScreenshotCommand}" ToolTip="{Binding ScreenshotToolTip}" />
             </UniformGrid>
         </StackPanel>
     </Border>

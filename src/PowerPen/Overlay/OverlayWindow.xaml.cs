@@ -112,6 +112,9 @@ public partial class OverlayWindow : Window
         SetClickThrough(!_isDrawing);
     }
 
+    /// <summary>Finishes any text being typed (e.g. before a screenshot, so it's in the picture).</summary>
+    public void FinishTextEditing() => _text.Commit();
+
     /// <summary>Removes all ink and text from this monitor. Each removal is reported for undo.</summary>
     public void ClearAll()
     {

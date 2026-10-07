@@ -134,6 +134,36 @@ public class AppSettingsTests
         Assert.Single(_problems);
     }
 
+    /// <summary>Empty, a full path, or a path with environment variables are all fine for the screenshot folder.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData(@"C:\Users\Someone\Pictures\Screenshots")]
+    [InlineData(@"%USERPROFILE%\Pictures")]
+    [InlineData(@"\\server\share\screenshots")]
+    public void ScreenshotFolder_ValidValues_Accepted(string folder)
+    {
+        var settings = new AppSettings { ScreenshotFolder = folder };
+
+        settings.Validate(_problems);
+
+        Assert.Equal(folder, settings.ScreenshotFolder);
+        Assert.Empty(_problems);
+    }
+
+    /// <summary>A relative path (which would depend on where PowerPen was started) falls back to Downloads.</summary>
+    [Theory]
+    [InlineData("Screenshots")]
+    [InlineData(@"Pictures\Screenshots")]
+    public void ScreenshotFolder_RelativePath_UsesDownloads(string folder)
+    {
+        var settings = new AppSettings { ScreenshotFolder = folder };
+
+        settings.Validate(_problems);
+
+        Assert.Equal("", settings.ScreenshotFolder);
+        Assert.Contains("screenshotFolder", Assert.Single(_problems));
+    }
+
     /// <summary>Only as many color hotkeys as there are colors are checked for collisions.</summary>
     [Fact]
     public void ColorHotkeys_OnlyCoverExistingColors()

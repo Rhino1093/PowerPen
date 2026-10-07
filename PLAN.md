@@ -1,6 +1,6 @@
 # PowerPen — Build Plan
 
-**Status:** v0.8 — 2026-10-07. Phases 0–3 done. Phase 4 in progress.
+**Status:** v0.10 — 2026-10-07. Phases 0–4 done. Phases 5–6 in progress.
 
 ---
 
@@ -175,7 +175,18 @@ Phase 5 replaces "edit the settings file" with a Settings window.
    - **Single click** → captures that whole monitor. This also lets you click 📷 on one monitor and capture a different one.
 3. Crop, save as PNG, copy to the clipboard, and show a toast: "Saved PowerPen_2026-10-07_143205.png." Clicking the toast opens the folder with the file selected.
 
+**Selection screen**
+- The selected area shows undimmed, with a dashed border and its real pixel size (e.g. "512 × 288").
+- **Cancel** with Esc, a right-click, or by switching apps (Alt+Tab or the Win key). The last one ensures frozen images can never be left covering the monitors.
+- Works in both modes, and afterwards returns you to where you were: the overlay if you were drawing, otherwise your app.
+- Any text being typed is finished first, so it's in the picture.
+
 **Details**
+- **Tooltip timing:** the screen is frozen 150 ms after the click. The toolbar is excluded from captures, but its tooltip is a separate window, and this gives it time to disappear.
+- **Toast:** appears in the bottom-right of the monitor the shot was taken on and disappears after 5 s (hovering pauses it). Clicking it opens Explorer with the file selected. It never takes focus and never appears in captures.
+- **Clipboard:** retries 3 times if another app is holding the clipboard. If it still fails, the toast says so and the file is still saved.
+- **Save errors** (folder missing, no permission) show a message that names the folder, says whether the picture is still on the clipboard, and explains how to fix it.
+- **No overwrites:** two shots in the same second get `_2`, `_3`, and so on, and files are opened with "create new" so an existing file can never be overwritten.
 - **Capture method:** GDI `BitBlt` with `SRCCOPY | CAPTUREBLT`, called directly. `CAPTUREBLT` is what includes the transparent ink overlay. It captures physical pixels, so you get full native resolution on every monitor.
   - ⚠ `Graphics.CopyFromScreen` can't be used: it throws if `CaptureBlt` is combined with any other flag. The Phase 0 self-test found this.
 - **Toolbar never appears in screenshots:** it's set with `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`, so there's no hide-and-flash trick. Side effect: the toolbar is also hidden from Teams/Zoom shares. This is a setting.
@@ -243,9 +254,17 @@ As of Phase 2:
 }
 ```
 
-**Later phases add their own fields only when they use them,** so the file never has settings that do nothing:
-- Phase 4: `screenshotFolder` (empty = Downloads), `copyScreenshotToClipboard`, `hideToolbarFromCapture`.
-- Phase 5: `toolbar` position, `startWithWindows`.
+**Later phases add their own fields only when they use them,** so the file never has settings that do nothing.
+
+Added in Phase 4:
+```json
+  "screenshotFolder": "",               // empty = Downloads; full path; %USERPROFILE% etc. work
+  "copyScreenshotToClipboard": true,
+  "hideToolbarFromCapture": true        // also hides it from Teams/Zoom shares
+```
+An existing settings file doesn't list these until you add the lines; missing fields use the defaults above.
+
+Phase 5 will add: `toolbar` position, `startWithWindows`.
 
 **Rules**
 - The file is hand-editable: comments and trailing commas are allowed, and missing fields keep their defaults.
@@ -315,14 +334,14 @@ PowerPen/
 │  ├─ AppHost.cs             builds and wires the main objects (shared with the self-test)
 │  ├─ Core/                  AppState, AppCommands, ToolType, InkStyle, UndoManager, UndoActions
 │  ├─ Overlay/               OverlayManager, OverlayWindow, ShapeBuilder, ShapeTool, TextTool
-│  ├─ Capture/               ScreenCapture · later: ScreenshotService, RegionSelectWindow
+│  ├─ Capture/               ScreenCapture, ScreenshotService, RegionSelector, RegionSelectWindow, ScreenshotFiles
 │  ├─ Input/                 HotkeyService, Hotkey (parser), DrawModeKeys
 │  ├─ Settings/              AppSettings (+ validation), SettingsService · later: SettingsWindow
-│  ├─ UI/                    ToolbarWindow, ToolbarViewModel, SwatchViewModel, ToolButton · later: ToastWindow, TrayIcon
-│  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer · later: KnownFolders
+│  ├─ UI/                    ToolbarWindow, ToolbarViewModel, SwatchViewModel, ToolButton, ToastWindow · later: TrayIcon
+│  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer, KnownFolders
 │  ├─ Diagnostics/           SelfTest, SyntheticInput
 │  └─ Assets/                later: PowerPen.ico
-└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService, ShapeBuilder · later: file naming
+└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService, ShapeBuilder, ScreenshotFiles
 ```
 
 ---
@@ -395,10 +414,19 @@ Each phase ends with something you can run and use.
 
 **Done when:** shapes and text can be undone and erased, and they appear in screenshots.
 
-### Phase 4 — Screenshots
+### Phase 4 — Screenshots ✅ done (manually tested 2026-10-07)
 1. 📷 button: freeze all monitors, then drag for an area or click for a full monitor.
 2. Save to Downloads (known folder), copy to clipboard, show toast.
 3. Toolbar excluded from capture.
+4. Unit tests (103 total) cover file naming, "never overwrite", PNG saving, and validation of the folder setting.
+5. Self-test "Screenshots" section, run through the real 📷 button in **dry-run mode**: pictures stay in memory, nothing is written to disk, and the clipboard is never touched. It checks that:
+   - the toolbar is invisible to captures (verified with a magenta line under it);
+   - all monitors freeze;
+   - a dragged area is the exact size and includes the ink;
+   - a click captures the full monitor;
+   - Esc cancels.
+   It passed 3 of 3 runs.
+6. Not covered by the self-test (manual): the real save to Downloads, the clipboard, and the toast.
 
 **Done when:** the 📷 button produces a correct PNG for an area and for a full screen on all 3 monitors.
 
