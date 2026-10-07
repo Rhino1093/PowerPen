@@ -1,6 +1,9 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PowerPen.Interop;
 
@@ -24,10 +27,6 @@ public partial class ToolbarWindow : Window
     /// <summary>Native window handle. Valid once the window has been shown.</summary>
     public IntPtr Handle => _hwnd;
 
-    /// <summary>Center of the Pen button in physical screen pixels. Used by the self-test to click it.</summary>
-    internal Point PenButtonScreenCenter() =>
-        PenButton.PointToScreen(new Point(PenButton.ActualWidth / 2, PenButton.ActualHeight / 2));
-
     /// <summary>
     /// Moves the toolbar back to the top of the always-on-top windows. Needed because an overlay jumps above
     /// it whenever the overlay is shown or clicked, which would leave the toolbar visible but unclickable.
@@ -41,6 +40,38 @@ public partial class ToolbarWindow : Window
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
+    /// <summary>Center of a named button in physical screen pixels. Used by the self-test to click it.</summary>
+    /// <param name="buttonName">The button's x:Name, e.g. "PenButton".</param>
+    internal Point ButtonScreenCenter(string buttonName)
+    {
+        var button = (FrameworkElement)FindName(buttonName);
+        return button.PointToScreen(new Point(button.ActualWidth / 2, button.ActualHeight / 2));
+    }
+
+    /// <summary>
+    /// Renders the toolbar to a PNG without showing it (for checking the layout during development).
+    /// Only the toolbar itself is drawn; nothing from the screen is captured.
+    /// </summary>
+    internal void SaveSnapshot(string path)
+    {
+        Root.DataContext ??= DataContext;
+        Root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Root.Arrange(new Rect(Root.DesiredSize));
+        Root.UpdateLayout();
+
+        // Rendered at 2x so small details (icons, rings) are easy to inspect.
+        const double scale = 2;
+        var bitmap = new RenderTargetBitmap(
+            (int)Math.Ceiling(Root.ActualWidth * scale), (int)Math.Ceiling(Root.ActualHeight * scale),
+            96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        bitmap.Render(Root);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using FileStream file = File.Create(path);
+        encoder.Save(file);
+    }
+
     /// <summary>Configures the native window before it first appears.</summary>
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -48,7 +79,7 @@ public partial class ToolbarWindow : Window
         _hwnd = new WindowInteropHelper(this).Handle;
 
         // NOACTIVATE: clicking a button must not steal focus from the app you're presenting,
-        // or from the overlay while drawing (which needs it for Esc).
+        // or from the overlay while drawing (which needs it for keys and typing).
         // TOOLWINDOW: keep the toolbar out of Alt+Tab.
         NativeMethods.AddExtendedStyle(_hwnd, NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TOOLWINDOW);
 

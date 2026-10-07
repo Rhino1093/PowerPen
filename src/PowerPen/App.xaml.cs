@@ -32,6 +32,14 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length > 0 && e.Args[0].Equals("--render-toolbar", StringComparison.OrdinalIgnoreCase))
+        {
+            string imagePath = e.Args.Length > 1 ? e.Args[1] : Path.Combine(Path.GetTempPath(), "PowerPen-toolbar.png");
+            RenderToolbar(imagePath);
+            Shutdown();
+            return;
+        }
+
         // Settings and hotkey problems are collected and shown together, after everything is running.
         var problems = new List<string>();
         AppSettings settings = SettingsService.Load(SettingsService.DefaultPath, problems);
@@ -105,6 +113,20 @@ public partial class App : Application
                 : $"Windows wouldn't let PowerPen use {hotkey} ({purpose}). " +
                   $"To fix: restart PowerPen. If it keeps happening, change \"hotkeys.{settingName}\" in the settings file.");
         }
+    }
+
+    /// <summary>
+    /// Development aid: renders the toolbar to two PNGs (Pointer mode, and drawing with the Arrow) without
+    /// showing any windows, to check the layout. Only the toolbar is drawn; nothing from the screen is captured.
+    /// </summary>
+    private static void RenderToolbar(string imagePath)
+    {
+        using var host = new AppHost(new AppSettings());
+        host.Toolbar.SaveSnapshot(imagePath);
+
+        host.State.IsDrawMode = true;
+        host.State.CurrentTool = Core.ToolType.Arrow;
+        host.Toolbar.SaveSnapshot(Path.ChangeExtension(imagePath, null) + "-active.png");
     }
 
     /// <summary>Runs the self-test, then exits with code 0 (all passed) or 1 (failures or crash).</summary>

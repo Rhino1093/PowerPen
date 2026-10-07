@@ -1,3 +1,5 @@
+using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Ink;
 
 namespace PowerPen.Core;
@@ -53,6 +55,32 @@ public sealed class StrokesChangedAction(StrokeCollection target, StrokeCollecti
             if (!target.Contains(stroke))
                 target.Add(stroke);
         }
+    }
+}
+
+/// <summary>A text item was added to or removed from one monitor's overlay.</summary>
+/// <param name="target">The overlay's element collection.</param>
+/// <param name="element">The text item.</param>
+/// <param name="wasAdded">True if the change added the item; false if it removed it.</param>
+public sealed class ElementChangedAction(UIElementCollection target, UIElement element, bool wasAdded) : IUndoableAction
+{
+    /// <summary>Reverses the change.</summary>
+    public void Undo() => SetPresent(!wasAdded);
+
+    /// <summary>Re-applies the change.</summary>
+    public void Redo() => SetPresent(wasAdded);
+
+    /// <summary>
+    /// Adds or removes the element. Its position is stored on the element itself (InkCanvas.Left/Top),
+    /// so putting it back restores it exactly where it was.
+    /// </summary>
+    private void SetPresent(bool present)
+    {
+        bool isPresent = target.Contains(element);
+        if (present && !isPresent)
+            target.Add(element);
+        else if (!present && isPresent)
+            target.Remove(element);
     }
 }
 

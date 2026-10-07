@@ -1,5 +1,7 @@
 using System.IO;
 using System.Text;
+using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -62,7 +64,7 @@ public static class SelfTest
 
         report.AppendLine($"PowerPen self-test  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Windows {Environment.OSVersion.Version}, .NET {Environment.Version}");
-        report.AppendLine("Tip: using the mouse or keyboard while the test runs (about 10 seconds) can cause false failures.");
+        report.AppendLine("Tip: using the mouse or keyboard while the test runs (about 20 seconds) can cause false failures.");
 
         using var host = new AppHost(new AppSettings());
         host.Start();
@@ -104,8 +106,7 @@ public static class SelfTest
         // EnterDrawMode() directly from a background-launched test can't prove focus works.
         IntPtr originalForeground = NativeMethods.GetForegroundWindow();
         NativeMethods.GetCursorPos(out NativeMethods.POINT originalCursor);
-        System.Windows.Point pen = host.Toolbar.PenButtonScreenCenter();
-        var penPoint = new NativeMethods.POINT { X = (int)pen.X, Y = (int)pen.Y };
+        NativeMethods.POINT penPoint = ScreenPoint(host.Toolbar.ButtonScreenCenter("PenButton"));
 
         // Record what the toolbar actually receives, so a failed click can be told apart from a lost click.
         var toolbarSaw = new List<string>();
@@ -117,7 +118,7 @@ public static class SelfTest
         // Safety: only click if that exact spot belongs to the toolbar, so a stray click can never reach the user's apps.
         bool penClickable = NativeMethods.WindowFromPoint(penPoint) == host.Toolbar.Handle;
         if (penClickable)
-            SyntheticInput.ClickAt(penPoint.X, penPoint.Y);
+            SyntheticInput.ClickAt(penPoint);
         await WaitForScreenAsync();
         host.Toolbar.PreviewMouseLeftButtonDown -= onDown;
         host.Toolbar.PreviewMouseLeftButtonUp -= onUp;
@@ -173,6 +174,13 @@ public static class SelfTest
         host.Commands.EnterPointerMode();
         await WaitForScreenAsync();
         bool focusRestoredAfterHotkey = NativeMethods.GetForegroundWindow() == originalForeground;
+
+        // --- Shapes and text, done the way a user does them.
+        var shapeResults = new List<(string Description, bool Passed)>();
+        string? shapeSkipReason = await RunShapeAndTextChecksAsync(host, overlays, mainOverlay, shapeResults);
+        host.Commands.EnterPointerMode();
+        await WaitForScreenAsync();
+        bool focusRestoredAfterShapes = NativeMethods.GetForegroundWindow() == originalForeground;
         NativeMethods.SetCursorPos(originalCursor.X, originalCursor.Y);
 
         // --- Per-monitor results.
@@ -236,6 +244,14 @@ public static class SelfTest
         }
 
         report.AppendLine();
+        report.AppendLine("Shapes and text");
+        if (shapeSkipReason != null)
+            Skip("Shapes and text", shapeSkipReason);
+        foreach ((string description, bool passed) in shapeResults)
+            Check(passed, description);
+        Check(focusRestoredAfterShapes, "Focus returns to your app afterwards");
+
+        report.AppendLine();
         report.AppendLine("Unexpected errors");
         Check(UnhandledErrors.Count == 0, $"No unexpected errors ({UnhandledErrors.Count} found)");
         foreach (string error in UnhandledErrors)
@@ -245,6 +261,146 @@ public static class SelfTest
         report.AppendLine(allPassed ? "RESULT: ALL PASSED" : "RESULT: FAILURES FOUND");
         File.WriteAllText(reportPath, report.ToString());
         return allPassed;
+    }
+
+    /// <summary>
+    /// Draws an arrow and a Shift-square by dragging, types text, erases it, and checks undo and Clear all.
+    /// Everything happens in Draw mode, where the overlays cover every monitor, so synthetic clicks and drags
+    /// can only land on PowerPen. Keys are only sent while an overlay has focus.
+    /// </summary>
+    /// <returns>Null if the checks ran; otherwise why they were skipped.</returns>
+    private static async Task<string?> RunShapeAndTextChecksAsync(
+        AppHost host, IReadOnlyList<OverlayWindow> overlays, OverlayWindow main, List<(string Description, bool Passed)> results)
+    {
+        bool OverlayHasFocus() => IsOverlay(overlays, NativeMethods.GetForegroundWindow());
+        PixelRect area = main.TargetMonitor.Bounds;
+
+        // A point on the main monitor as fractions of its size. Shapes go in the upper area, away from the
+        // marker line (middle) and the toolbar (left edge).
+        NativeMethods.POINT At(double fx, double fy) =>
+            new() { X = area.X + (int)(area.Width * fx), Y = area.Y + (int)(area.Height * fy) };
+
+        // Start the way a user would: click the Arrow button.
+        NativeMethods.POINT arrowButton = ScreenPoint(host.Toolbar.ButtonScreenCenter("ArrowButton"));
+        if (NativeMethods.WindowFromPoint(arrowButton) != host.Toolbar.Handle)
+            return "the toolbar's Arrow button isn't clickable";
+        SyntheticInput.ClickAt(arrowButton);
+        await WaitForScreenAsync();
+        if (!host.State.IsDrawMode || host.State.CurrentTool != ToolType.Arrow || !OverlayHasFocus())
+            return "clicking Arrow didn't start drawing with focus";
+
+        // Arrow: one stroke whose first two points are the tail and the tip.
+        int before = main.Strokes.Count;
+        NativeMethods.POINT tail = At(0.30, 0.20), tip = At(0.45, 0.30);
+        await SyntheticInput.DragAsync(tail, tip);
+        await ShortWaitAsync();
+        bool oneArrow = main.Strokes.Count == before + 1;
+        StylusPointCollection arrow = main.Strokes[^1].StylusPoints;
+        results.Add(("Dragging with Arrow draws one arrow from tail to tip",
+            oneArrow && Near(arrow[0], ToOverlay(main, tail)) && Near(arrow[1], ToOverlay(main, tip))));
+
+        // Rectangle with Shift held: the drag is taller than wide, but the result must be a square.
+        SyntheticInput.PressKey(Key.R);
+        await ShortWaitAsync();
+        await SyntheticInput.DragAsync(At(0.30, 0.20), At(0.36, 0.32), holdShift: true);
+        await ShortWaitAsync();
+        bool square = false;
+        if (host.State.CurrentTool == ToolType.Rectangle && main.Strokes.Count == before + 2)
+        {
+            StylusPointCollection rect = main.Strokes[^1].StylusPoints;
+            double width = rect.Max(p => p.X) - rect.Min(p => p.X);
+            double height = rect.Max(p => p.Y) - rect.Min(p => p.Y);
+            square = width > 0 && Math.Abs(width - height) < 1.5;
+        }
+        results.Add(("R + drag with Shift draws a square", square));
+
+        if (!OverlayHasFocus())
+            return "an overlay lost focus after drawing shapes";
+        SyntheticInput.PressChord(ModifierKeys.Control, Key.Z);
+        await ShortWaitAsync();
+        results.Add(("Ctrl+Z removes the last shape", main.Strokes.Count == before + 1));
+
+        // Text: T, click, type "hi", Enter. Typing H and I must go into the text, not switch tools.
+        SyntheticInput.PressKey(Key.T);
+        await ShortWaitAsync();
+        SyntheticInput.ClickAt(At(0.60, 0.20));
+        await WaitForScreenAsync();
+        results.Add(("Clicking with Text opens a text box", main.IsEditingText));
+        if (!OverlayHasFocus())
+            return "an overlay lost focus before typing";
+        SyntheticInput.PressKey(Key.H);
+        SyntheticInput.PressKey(Key.I);
+        await ShortWaitAsync();
+        results.Add(("Typed letters go into the text, not to shortcuts", host.State.CurrentTool == ToolType.Text));
+        SyntheticInput.PressKey(Key.Enter);
+        await ShortWaitAsync();
+        TextBox? typed = FindText(main, "hi");
+        results.Add(("Enter finishes the text (\"hi\")", typed != null && !main.IsEditingText));
+        if (typed == null)
+            return null;
+
+        // Eraser across the middle of the text removes it; Ctrl+Z brings it back.
+        if (!OverlayHasFocus())
+            return "an overlay lost focus after typing";
+        SyntheticInput.PressKey(Key.E);
+        await ShortWaitAsync();
+        double textMiddle = InkCanvas.GetTop(typed) + typed.ActualHeight / 2;
+        NativeMethods.POINT eraseFrom = ToScreen(main, new Point(InkCanvas.GetLeft(typed) - 10, textMiddle));
+        NativeMethods.POINT eraseTo = ToScreen(main, new Point(InkCanvas.GetLeft(typed) + typed.ActualWidth + 10, textMiddle));
+        await SyntheticInput.DragAsync(eraseFrom, eraseTo);
+        await ShortWaitAsync();
+        results.Add(("Eraser removes text", FindText(main, "hi") == null));
+        SyntheticInput.PressChord(ModifierKeys.Control, Key.Z);
+        await ShortWaitAsync();
+        results.Add(("Ctrl+Z brings erased text back", FindText(main, "hi") != null));
+
+        // Clear all removes shapes and text in one step; one Undo restores both.
+        int strokesBeforeClear = main.Strokes.Count;
+        host.Commands.ClearAll();
+        bool allGone = main.Strokes.Count == 0 && !main.TextItems.Any();
+        host.Commands.Undo();
+        results.Add(("Clear all removes shapes and text; one Undo restores both",
+            allGone && main.Strokes.Count == strokesBeforeClear && FindText(main, "hi") != null));
+
+        if (OverlayHasFocus())
+        {
+            SyntheticInput.PressKey(Key.Escape);
+            await ShortWaitAsync();
+        }
+        results.Add(("Esc leaves Draw mode", !host.State.IsDrawMode));
+        return null;
+    }
+
+    /// <summary>The finished text item on <paramref name="overlay"/> reading <paramref name="text"/> (any case), if any.</summary>
+    private static TextBox? FindText(OverlayWindow overlay, string text) =>
+        overlay.TextItems.FirstOrDefault(t => t.Text.Equals(text, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Rounds a WPF screen point (physical pixels) to a Win32 point.</summary>
+    private static NativeMethods.POINT ScreenPoint(Point point) =>
+        new() { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
+
+    /// <summary>Converts a screen point (physical pixels) to the overlay's ink coordinates (WPF units).</summary>
+    private static Point ToOverlay(OverlayWindow overlay, NativeMethods.POINT point)
+    {
+        DisplayMonitor m = overlay.TargetMonitor;
+        return new Point((point.X - m.Bounds.X) / m.Scale, (point.Y - m.Bounds.Y) / m.Scale);
+    }
+
+    /// <summary>Converts an overlay ink point (WPF units) to a screen point (physical pixels).</summary>
+    private static NativeMethods.POINT ToScreen(OverlayWindow overlay, Point point)
+    {
+        DisplayMonitor m = overlay.TargetMonitor;
+        return new NativeMethods.POINT { X = m.Bounds.X + (int)(point.X * m.Scale), Y = m.Bounds.Y + (int)(point.Y * m.Scale) };
+    }
+
+    /// <summary>True if a stroke point is within 3 WPF units of <paramref name="expected"/> (allows for pixel rounding).</summary>
+    private static bool Near(StylusPoint actual, Point expected) => (new Point(actual.X, actual.Y) - expected).Length <= 3;
+
+    /// <summary>Gives WPF a moment to process input.</summary>
+    private static async Task ShortWaitAsync()
+    {
+        await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+        await Task.Delay(150);
     }
 
     /// <summary>Presses a key (with optional modifiers), waits for PowerPen to react, and evaluates <paramref name="check"/>.</summary>

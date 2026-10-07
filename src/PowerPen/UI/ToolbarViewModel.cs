@@ -71,6 +71,21 @@ public sealed partial class ToolbarViewModel : ObservableObject
     /// <summary>True when erasing.</summary>
     public bool IsEraserActive => IsToolActive(ToolType.Eraser);
 
+    /// <summary>True when drawing lines.</summary>
+    public bool IsLineActive => IsToolActive(ToolType.Line);
+
+    /// <summary>True when drawing arrows.</summary>
+    public bool IsArrowActive => IsToolActive(ToolType.Arrow);
+
+    /// <summary>True when drawing rectangles.</summary>
+    public bool IsRectangleActive => IsToolActive(ToolType.Rectangle);
+
+    /// <summary>True when drawing ellipses.</summary>
+    public bool IsEllipseActive => IsToolActive(ToolType.Ellipse);
+
+    /// <summary>True when placing text.</summary>
+    public bool IsTextActive => IsToolActive(ToolType.Text);
+
     /// <summary>True while ink is hidden; highlights the eye button so the hidden state is never a mystery.</summary>
     public bool IsInkHidden => !_state.IsInkVisible;
 
@@ -93,10 +108,25 @@ public sealed partial class ToolbarViewModel : ObservableObject
     public string HighlighterToolTip => Tip("Highlighter", "H", null);
 
     /// <summary>Tooltip for the Eraser button.</summary>
-    public string EraserToolTip => Tip("Eraser: drag over a stroke to remove it", "E", null);
+    public string EraserToolTip => Tip("Eraser: drag over strokes or text to remove them", "E", null);
 
-    /// <summary>Tooltip for the pen-size button.</summary>
-    public string SizeToolTip => Tip($"Pen size: {_state.PenSize} (click to change)", "[ and ]", null);
+    /// <summary>Tooltip for the Line button.</summary>
+    public string LineToolTip => Tip("Line: drag to draw", "L · hold Shift for 45° angles", null);
+
+    /// <summary>Tooltip for the Arrow button.</summary>
+    public string ArrowToolTip => Tip("Arrow: drag from the tail to the tip", "A · hold Shift for 45° angles", null);
+
+    /// <summary>Tooltip for the Rectangle button.</summary>
+    public string RectangleToolTip => Tip("Rectangle: drag from corner to corner", "R · hold Shift for a square", null);
+
+    /// <summary>Tooltip for the Ellipse button.</summary>
+    public string EllipseToolTip => Tip("Ellipse: drag from corner to corner", "O · hold Shift for a circle", null);
+
+    /// <summary>Tooltip for the Text button.</summary>
+    public string TextToolTip => Tip("Text: click where you want to type", "T · Enter to finish, Shift+Enter for a new line, Esc to cancel", null);
+
+    /// <summary>Tooltip for the size button.</summary>
+    public string SizeToolTip => Tip($"Line and text size: {_state.PenSize} (click to change)", "[ and ]", null);
 
     /// <summary>Tooltip for the Undo button.</summary>
     public string UndoToolTip => Tip("Undo", "Ctrl+Z (Ctrl+Y to redo)", null);
@@ -111,17 +141,9 @@ public sealed partial class ToolbarViewModel : ObservableObject
     [RelayCommand]
     private void Pointer() => _commands.EnterPointerMode();
 
-    /// <summary>Starts drawing with the pen.</summary>
+    /// <summary>Selects a tool and starts drawing with it. The toolbar passes the tool as the button's CommandParameter.</summary>
     [RelayCommand]
-    private void Pen() => _commands.SelectTool(ToolType.Pen);
-
-    /// <summary>Starts drawing with the highlighter.</summary>
-    [RelayCommand]
-    private void Highlighter() => _commands.SelectTool(ToolType.Highlighter);
-
-    /// <summary>Starts erasing.</summary>
-    [RelayCommand]
-    private void Eraser() => _commands.SelectTool(ToolType.Eraser);
+    private void SelectTool(ToolType tool) => _commands.SelectTool(tool);
 
     /// <summary>Cycles the pen size.</summary>
     [RelayCommand]

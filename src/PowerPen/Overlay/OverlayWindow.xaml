@@ -11,7 +11,13 @@
         ResizeMode="NoResize"
         WindowStartupLocation="Manual">
 
-    <!-- InkCanvas defaults to a white background; it must be transparent so the desktop shows through.
-         The code-behind switches it to a near-transparent brush in Draw mode so it can catch the mouse. -->
-    <InkCanvas x:Name="Ink" Background="Transparent" EditingMode="None" />
+    <Grid>
+        <!-- InkCanvas defaults to a white background; it must be transparent so the desktop shows through.
+             The code-behind switches it to a near-transparent brush in Draw mode so it can catch the mouse.
+             Text items are added as its children. -->
+        <InkCanvas x:Name="Ink" Background="Transparent" EditingMode="None" />
+
+        <!-- Live preview of the shape being dragged. Same origin as the InkCanvas, never takes input. -->
+        <InkPresenter x:Name="Preview" IsHitTestVisible="False" />
+    </Grid>
 </Window>

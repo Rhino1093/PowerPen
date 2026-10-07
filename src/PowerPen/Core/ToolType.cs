@@ -11,8 +11,31 @@ public enum ToolType
     /// <summary>Wide, semi-transparent marker.</summary>
     Highlighter,
 
-    /// <summary>Removes whole strokes it touches.</summary>
+    /// <summary>Removes whole strokes and text it touches.</summary>
     Eraser,
+
+    /// <summary>Straight line (Shift: 45° steps).</summary>
+    Line,
+
+    /// <summary>Line with an arrowhead at the end (Shift: 45° steps).</summary>
+    Arrow,
+
+    /// <summary>Rectangle outline (Shift: square).</summary>
+    Rectangle,
+
+    /// <summary>Ellipse outline (Shift: circle).</summary>
+    Ellipse,
+
+    /// <summary>Typed text.</summary>
+    Text,
+}
+
+/// <summary>Helpers for <see cref="ToolType"/>.</summary>
+public static class ToolTypeExtensions
+{
+    /// <summary>True for tools drawn by dragging from one corner/end to the other.</summary>
+    public static bool IsShape(this ToolType tool) =>
+        tool is ToolType.Line or ToolType.Arrow or ToolType.Rectangle or ToolType.Ellipse;
 }
 
 /// <summary>The three pen-size presets, in order from thinnest to thickest.</summary>

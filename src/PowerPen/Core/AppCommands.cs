@@ -127,12 +127,11 @@ public sealed class AppCommands
         if (!_state.IsDrawMode)
             return false;
 
-        switch (DrawModeKeys.Map(key, modifiers, out int colorIndex))
+        DrawModeCommand command = DrawModeKeys.Map(key, modifiers);
+        switch (command.Action)
         {
-            case DrawModeAction.SelectPen: SelectTool(ToolType.Pen); break;
-            case DrawModeAction.SelectHighlighter: SelectTool(ToolType.Highlighter); break;
-            case DrawModeAction.SelectEraser: SelectTool(ToolType.Eraser); break;
-            case DrawModeAction.SelectColor: SelectColor(colorIndex); break;
+            case DrawModeAction.SelectTool: SelectTool(command.Tool); break;
+            case DrawModeAction.SelectColor: SelectColor(command.ColorIndex); break;
             case DrawModeAction.SizeDown: ChangeSize(-1); break;
             case DrawModeAction.SizeUp: ChangeSize(+1); break;
             case DrawModeAction.Undo: Undo(); break;

@@ -1,6 +1,6 @@
 # PowerPen — Build Plan
 
-**Status:** v0.6 — 2026-10-07. Phases 0–2 done. Phase 3 in progress.
+**Status:** v0.8 — 2026-10-07. Phases 0–3 done. Phase 4 in progress.
 
 ---
 
@@ -105,17 +105,22 @@ A personal Epic Pen Pro–style screen annotation tool for Windows. Draw on top 
 |---|---|
 | Pen | `EditingMode=Ink`, `FitToCurve=true`, pressure on |
 | Highlighter | Ink + `IsHighlighter=true`, rectangular tip, 3× width |
-| Eraser | `EraseByStroke` removes whole strokes, like Epic Pen. It also hit-tests text boxes. |
-| Line / Arrow / Rectangle / Ellipse | `EditingMode=None`. We handle mouse down/move/up ourselves and show a live preview. On release, the shape is converted into normal `Stroke`(s). **Shift** constrains it (45° lines, squares, circles). |
-| Text | Click to place a `TextBox`. `Enter` or clicking away turns it into a `TextBlock` on the InkCanvas. `Shift+Enter` adds a new line, `Esc` cancels. |
+| Eraser | `EraseByStroke` removes whole strokes, like Epic Pen. Text is removed when the eraser passes within 8 units of it, checked by position. |
+| Line / Arrow / Rectangle / Ellipse | `EditingMode=None`. We handle mouse down/move/up ourselves and show a live preview in a separate `InkPresenter`, so dragging doesn't flood the undo history. On release, the shape becomes **one** normal `Stroke`. **Shift** constrains it (45° lines, squares, circles) and updates the preview instantly when pressed or released. `Esc` mid-drag cancels the shape. |
+| Text | Click to place a `TextBox`. `Enter` or clicking elsewhere finishes it. `Shift+Enter` adds a new line, `Esc` cancels. The finished item is the same box made read-only and borderless, so the text doesn't jump on finish. Items ignore the mouse, so the pen can draw over text. |
 
-**Why shapes become strokes:** eraser, undo, clear, and screenshots then work on shapes with zero special cases.
+- **Why shapes become strokes:** eraser, undo, clear, and screenshots then work on shapes with zero special cases.
+- **One stroke per shape**, including the arrow (tail → tip → wing → tip → wing), so each shape erases and undoes as a unit.
+- **Shape strokes turn off curve smoothing**, so rectangle corners and arrowheads stay sharp.
+- **Text size follows the size button:** 18 / 28 / 40.
+- **Color changes apply to the box you're typing in.**
+- **Shortcuts are paused while a text box is open**, so typing "hello" doesn't switch to the highlighter.
 
 ### 5.5 Undo / redo
 
 - One app-wide stack that covers all monitors, so `Ctrl+Z` undoes the last thing you did no matter where it was.
 - Actions: `AddStrokes`, `RemoveStrokes`, `AddText`, `RemoveText`, `ClearAll` (keeps a snapshot).
-- Recorded from `StrokeCollection.StrokesChanged`. A flag pauses recording while an undo or redo is running.
+- Recorded from `StrokeCollection.StrokesChanged` and text added/removed events. A flag pauses recording while an undo or redo is running.
 - **Clear is undoable**, so an accidental clear isn't fatal.
 
 ### 5.6 Hotkeys
@@ -179,32 +184,32 @@ Phase 5 replaces "edit the settings file" with a Settings window.
 
 ### 5.8 Toolbar UI
 
+Two columns, every tool one click away (about 94 × 390 at 100%):
+
 ```
-┌──────┐
-│  ⠿   │  drag handle
-├──────┤
-│  ↖   │  Pointer mode (click-through)
-│  ✎   │  Pen
-│  ▮   │  Highlighter
-│  ⌫   │  Eraser
-│  ▭ ▸ │  Shapes ▸ flyout: Line · Arrow · Rectangle · Ellipse
-│  T   │  Text
-├──────┤
-│ ● ●  │
-│ ● ●  │  8 color swatches (active one has a ring)
-│ ● ●  │
-│ ● ●  │
-├──────┤
-│  ━   │  Thickness (click cycles S / M / L)
-│  ↶   │  Undo
-│  👁   │  Hide / show ink (lit up while hidden)
-│  🗑   │  Clear all
-│  📷  │  Screenshot (then drag an area, or click a screen)
-│  ⚙   │  Settings
-│  ▴   │  Collapse to a single button
-└──────┘
+┌─────────────┐
+│     ══      │  drag handle
+│  ↖     ✎    │  Pointer · Pen
+│  ▮     ⌫    │  Highlighter · Eraser
+│  ╱     ↗    │  Line · Arrow
+│  ▭     ⬭    │  Rectangle · Ellipse
+│  A     ●    │  Text · Size (dot shows size + color; click cycles S/M/L)
+├─────────────┤
+│  ● ● ● ●    │  8 color swatches (active one has a ring)
+│  ● ● ● ●    │
+├─────────────┤
+│  ↶     👁    │  Undo · Hide/show ink (lit up while hidden)
+│  🗑     📷   │  Clear all · Screenshot (Phase 4)
+│  ⚙     ▴    │  Settings · Collapse (Phase 5)
+└─────────────┘
 ```
 
+- **Changed in Phase 3:** the plan originally put the four shapes behind one "Shapes ▸" flyout. Two columns were chosen instead:
+  1. One click to any tool, instead of two plus a hidden menu.
+  2. The toolbar is shorter (about 390 vs. 760 tall), so it fits on laptop screens.
+  3. A flyout needs its own popup window, which brings back the focus and z-order problems the toolbar already solved.
+- Shape icons are drawn as outlines rather than font glyphs, so they show exactly the shape they draw.
+- `PowerPen.exe --render-toolbar [path.png]` renders the toolbar to images for layout checks. It draws only the toolbar and never captures the screen.
 - Floating and draggable. Remembers its position, and snaps back to the primary monitor if that screen is gone.
 - The active tool is highlighted. Tooltips show the hotkey, e.g., "Pen (P)", so people learn the keys by using the toolbar.
 - Icons come from the **Segoe Fluent Icons** font, which is built into Windows 11, so there are no image files to manage.
@@ -309,7 +314,7 @@ PowerPen/
 │  ├─ App.xaml(.cs)          entry point + global hotkeys
 │  ├─ AppHost.cs             builds and wires the main objects (shared with the self-test)
 │  ├─ Core/                  AppState, AppCommands, ToolType, InkStyle, UndoManager, UndoActions
-│  ├─ Overlay/               OverlayManager, OverlayWindow · later: ShapeBuilder, TextTool
+│  ├─ Overlay/               OverlayManager, OverlayWindow, ShapeBuilder, ShapeTool, TextTool
 │  ├─ Capture/               ScreenCapture · later: ScreenshotService, RegionSelectWindow
 │  ├─ Input/                 HotkeyService, Hotkey (parser), DrawModeKeys
 │  ├─ Settings/              AppSettings (+ validation), SettingsService · later: SettingsWindow
@@ -317,7 +322,7 @@ PowerPen/
 │  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer · later: KnownFolders
 │  ├─ Diagnostics/           SelfTest, SyntheticInput
 │  └─ Assets/                later: PowerPen.ico
-└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService · later: ShapeBuilder, file naming
+└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService, ShapeBuilder · later: file naming
 ```
 
 ---
@@ -374,10 +379,19 @@ Each phase ends with something you can run and use.
 
 **Done when:** everything from Phase 1 works from the keyboard, and settings survive a restart.
 
-### Phase 3 — Shapes + text
+### Phase 3 — Shapes + text ✅ done (manually tested 2026-10-07)
 1. Line, arrow, rectangle, and ellipse with live preview and Shift-constrain.
-2. Shapes flyout on the toolbar.
+2. ~~Shapes flyout on the toolbar.~~ Replaced by the two-column toolbar (§5.8).
 3. Text tool; eraser removes text too.
+4. Unit tests (94 total) now cover the shape geometry (45° snapping, squares in every drag direction, closed ellipses, arrowhead limits) and the new keys.
+5. Self-test adds a "Shapes and text" section, done with real (synthetic) input:
+   - arrow drag;
+   - Shift+drag square;
+   - Ctrl+Z on a shape;
+   - typing "hi" (H and I must not switch tools);
+   - erasing text and undoing it;
+   - Clear all + Undo.
+   It passed 3 of 3 runs.
 
 **Done when:** shapes and text can be undone and erased, and they appear in screenshots.
 

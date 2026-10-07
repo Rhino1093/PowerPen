@@ -82,10 +82,18 @@ public sealed class OverlayManager : IDisposable
                 if (e.Added.Count > 0 || e.Removed.Count > 0)
                     _undo.Record(new StrokesChangedAction(strokes, e.Added, e.Removed));
             };
+            // Text items added or removed (typing, erasing, clearing) become undo steps too.
+            overlay.TextItemChanged += (_, e) => _undo.Record(new ElementChangedAction(overlay.Elements, e.Item, e.WasAdded));
             overlay.GestureStarted += (_, _) => _undo.BeginGroup();
             overlay.GestureEnded += (_, _) => _undo.EndGroup();
+
             // Preview (tunneling) so shortcuts are seen before the InkCanvas, which has its own Delete/Ctrl+C handling.
-            overlay.PreviewKeyDown += (sender, e) => DrawModeKeyDown?.Invoke(sender, e);
+            // While a text box is open, every key belongs to the text: typing "hello" must not switch to the highlighter.
+            overlay.PreviewKeyDown += (sender, e) =>
+            {
+                if (!overlay.IsEditingText)
+                    DrawModeKeyDown?.Invoke(sender, e);
+            };
             overlay.Activated += (_, _) => OverlaysRaised?.Invoke(this, EventArgs.Empty);
 
             overlay.Show();
@@ -99,12 +107,12 @@ public sealed class OverlayManager : IDisposable
     /// <summary>Focuses the overlay on the monitor under the mouse, so it receives keys like Esc.</summary>
     public void ActivateOverlayUnderCursor() => OverlayUnderCursor()?.Activate();
 
-    /// <summary>Removes all ink from every monitor as a single undo step.</summary>
+    /// <summary>Removes all ink and text from every monitor as a single undo step.</summary>
     public void ClearAll()
     {
         _undo.BeginGroup();
         foreach (OverlayWindow overlay in _overlays)
-            overlay.Strokes.Clear();
+            overlay.ClearAll();
         _undo.EndGroup();
     }
 
@@ -125,7 +133,7 @@ public sealed class OverlayManager : IDisposable
         foreach (OverlayWindow overlay in _overlays)
         {
             // Each overlay gets its own copy so a change on one monitor can never leak into another.
-            overlay.ApplyState(_state.IsDrawMode, _state.IsInkVisible, _state.CurrentTool, attributes.Clone());
+            overlay.ApplyState(_state, attributes.Clone());
         }
     }
 
