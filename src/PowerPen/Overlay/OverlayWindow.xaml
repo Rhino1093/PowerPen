@@ -1,0 +1,17 @@
+<Window x:Class="PowerPen.Overlay.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PowerPen Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual">
+
+    <!-- InkCanvas defaults to a white background; it must be transparent so the desktop shows through.
+         The code-behind switches it to a near-transparent brush in Draw mode so it can catch the mouse. -->
+    <InkCanvas x:Name="Ink" Background="Transparent" EditingMode="None" />
+</Window>

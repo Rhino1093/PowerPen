@@ -1,0 +1,9 @@
+<!-- ShutdownMode is explicit because overlay windows get closed and recreated when monitors change;
+     the default (quit when the last window closes) would end the app during that rebuild. -->
+<Application x:Class="PowerPen.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+    </Application.Resources>
+</Application>
