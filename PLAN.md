@@ -1,6 +1,6 @@
 # PowerPen — Build Plan
 
-**Status:** v0.4 — 2026-10-07. Phases 0–1 done. Phase 2 in progress.
+**Status:** v0.6 — 2026-10-07. Phases 0–2 done. Phase 3 in progress.
 
 ---
 
@@ -129,7 +129,16 @@ There are two layers. Global single-letter hotkeys would break typing in every o
 | Toggle Draw / Pointer mode | `Ctrl+Alt+D` |
 | Pen in color 1–8 (also enters Draw mode) | `Ctrl+Alt+1`…`8` |
 | Clear all ink | `Ctrl+Alt+C` |
-| Hide / show ink | `Ctrl+Alt+H` |
+| Hide / show ink (also on the toolbar: 👁) | `Ctrl+Alt+I` |
+| Quit | `Ctrl+Alt+Q` |
+
+- All global hotkeys are set in `settings.json` (§5.9). An empty value turns a hotkey off.
+- Validation catches invalid combos, duplicates, and collisions with the color hotkeys, and explains each one.
+- ⚠ **F12 is rejected.** Microsoft's docs reserve it for debuggers: registering it succeeds, but it may never fire. The Phase 2 self-test hit exactly this.
+- ⚠ **Taken on the company image** (probed 2026-10-07): `Ctrl+Alt+H` and `Ctrl+Alt+M` are owned by another app. That's why hide/show ink is `Ctrl+Alt+I` ("I" for ink). Every `Ctrl+Alt+Shift+letter/digit` was free.
+- ⚠ **Global hotkeys override app shortcuts.** While PowerPen runs, Word's `Ctrl+Alt+1/2/3` (Heading 1–3) and `Ctrl+Alt+C` (©) go to PowerPen instead. If that matters to you, set `colorModifiers` to `Ctrl+Alt+Shift`.
+  - Decision (2026-10-07): keep `Ctrl+Alt+1–8`.
+- ⚠ **Non-US keyboards:** on many European layouts `Ctrl+Alt+digit` is AltGr, which types characters like `@`, `{`, `[`. If a teammate uses one, change `colorModifiers` (e.g., to `Ctrl+Alt+Shift`) or set it to empty.
 
 **Draw mode only** (plain keys; ignored while typing in a text box)
 
@@ -143,8 +152,14 @@ There are two layers. Global single-letter hotkeys would break typing in every o
 | `R` | Rectangle | `Shift` (while dragging) | Constrain shape |
 | `O` | Ellipse | `T` | Text |
 
-**If a hotkey is already taken** by another app, PowerPen keeps running and shows:
-> "Ctrl+Alt+D is already used by another app. Open Settings → Hotkeys and pick a different combination."
+- Draw-mode keys are fixed, not configurable. They only work while a PowerPen overlay has focus, so they can't clash with other apps.
+- `-` / `=` also work for thinner/thicker.
+- Shift is ignored for single-key shortcuts.
+
+**If a hotkey is already taken** by another app (or by a second running copy of PowerPen), PowerPen keeps running. All startup problems are shown together in one message, for example:
+> "Ctrl+Alt+D (switch between Draw and Pointer mode) is already used by another app or another copy of PowerPen. To fix: close the other app, or change "hotkeys.toggleDraw" in the settings file, then restart PowerPen."
+
+Phase 5 replaces "edit the settings file" with a Settings window.
 
 ### 5.7 Screenshots
 
@@ -182,6 +197,7 @@ There are two layers. Global single-letter hotkeys would break typing in every o
 ├──────┤
 │  ━   │  Thickness (click cycles S / M / L)
 │  ↶   │  Undo
+│  👁   │  Hide / show ink (lit up while hidden)
 │  🗑   │  Clear all
 │  📷  │  Screenshot (then drag an area, or click a screen)
 │  ⚙   │  Settings
@@ -199,29 +215,40 @@ There are two layers. Global single-letter hotkeys would break typing in every o
 
 ### 5.9 Settings
 
-The settings file is `%AppData%\PowerPen\settings.json`:
+The settings file is `%AppData%\PowerPen\settings.json`. It's created with defaults on first run.
+
+As of Phase 2:
 
 ```json
 {
-  "colors": ["#E53935", "#FB8C00", "#FDD835", "#43A047", "#1E88E5", "#8E24AA", "#000000", "#FFFFFF"],
-  "thickness": { "small": 2, "medium": 4, "large": 8 },
+  "colors": [
+    { "name": "Red", "color": "#E53935" },
+    { "name": "Orange", "color": "#FB8C00" },
+    "... 8 entries max; names appear in tooltips"
+  ],
+  "penSizes": { "small": 2, "medium": 4, "large": 8 },
   "highlighterWidthMultiplier": 3,
-  "screenshotFolder": "",
-  "copyScreenshotToClipboard": true,
-  "hideToolbarFromCapture": true,
-  "startWithWindows": false,
-  "toolbar": { "x": 40, "y": 200, "collapsed": false },
   "hotkeys": {
     "toggleDraw": "Ctrl+Alt+D",
+    "toggleInkVisible": "Ctrl+Alt+I",
     "clearAll": "Ctrl+Alt+C",
-    "toggleInkVisible": "Ctrl+Alt+H"
+    "quit": "Ctrl+Alt+Q",
+    "colorModifiers": "Ctrl+Alt"
   }
 }
 ```
 
-- An empty `screenshotFolder` means Downloads.
-- If the file is missing, defaults are used.
-- If the file is corrupt, it's renamed to `settings.bad.json`, defaults are loaded, and the user sees: "Settings file was unreadable. Defaults restored; your old file was saved as settings.bad.json."
+**Later phases add their own fields only when they use them,** so the file never has settings that do nothing:
+- Phase 4: `screenshotFolder` (empty = Downloads), `copyScreenshotToClipboard`, `hideToolbarFromCapture`.
+- Phase 5: `toolbar` position, `startWithWindows`.
+
+**Rules**
+- The file is hand-editable: comments and trailing commas are allowed, and missing fields keep their defaults.
+- **Invalid values** (bad color, out-of-range size, bad or duplicate hotkey) are replaced with defaults in memory and explained at startup. The file itself is left alone for the user to fix.
+- **Unreadable file** (broken JSON): it's renamed to `settings.bad.json`, fresh defaults are written, and the user is told the line number.
+- **Locked file:** defaults are used for this session and the file isn't touched.
+- **Tradeoff:** every default is written into the file on first run, which makes the file easy to discover and edit. The cost is that changing a default later doesn't reach people who already have a file; they keep the old value. The `Ctrl+Alt+H` → `Ctrl+Alt+I` change hit this, and your file was regenerated. Settle the defaults before sharing in Phase 6.
+- The file is written with `+` as-is. .NET escapes it as `+` by default, which made hotkeys unreadable.
 
 ### 5.10 Errors & logging
 
@@ -284,13 +311,13 @@ PowerPen/
 │  ├─ Core/                  AppState, AppCommands, ToolType, InkStyle, UndoManager, UndoActions
 │  ├─ Overlay/               OverlayManager, OverlayWindow · later: ShapeBuilder, TextTool
 │  ├─ Capture/               ScreenCapture · later: ScreenshotService, RegionSelectWindow
-│  ├─ Input/                 HotkeyService · later: HotkeyParser, DrawModeKeys
-│  ├─ Settings/              later: AppSettings, SettingsService, SettingsWindow
+│  ├─ Input/                 HotkeyService, Hotkey (parser), DrawModeKeys
+│  ├─ Settings/              AppSettings (+ validation), SettingsService · later: SettingsWindow
 │  ├─ UI/                    ToolbarWindow, ToolbarViewModel, SwatchViewModel, ToolButton · later: ToastWindow, TrayIcon
 │  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer · later: KnownFolders
 │  ├─ Diagnostics/           SelfTest, SyntheticInput
 │  └─ Assets/                later: PowerPen.ico
-└─ tests/PowerPen.Tests/     xUnit: UndoManager · later: ShapeBuilder, HotkeyParser, settings, file naming
+└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService · later: ShapeBuilder, file naming
 ```
 
 ---
@@ -325,10 +352,25 @@ Each phase ends with something you can run and use.
 
 **Done when:** you can annotate and undo using only the toolbar.
 
-### Phase 2 — Hotkeys + settings file
+### Phase 2 — Hotkeys + settings file ✅ done (manually tested 2026-10-07)
 1. `HotkeyService` for global hotkeys, plus Draw-mode keys.
 2. `SettingsService` with JSON load/save and defaults.
 3. Friendly messages for hotkey conflicts.
+4. Added: Hide/show ink, with a toolbar eye button so hidden ink is never a mystery.
+5. Added: tooltips show each button's shortcuts.
+6. Unit tests (70) for the hotkey parser, Draw-mode keys, settings validation, and the settings file.
+7. Self-test now also covers:
+   - a global hotkey (sent as synthetic `Ctrl+Alt+Shift+F24`);
+   - each Draw-mode key;
+   - hiding ink;
+   - errors that would otherwise only show as a popup.
+8. Self-test clicks are now sent as one batch (move + click), so real mouse movement can't redirect them.
+9. Manual test (2026-10-07): everything worked except `Ctrl+Alt+H`, which another app already owns.
+   - The default is now `Ctrl+Alt+I`.
+   - Fixed: settings were written with `+` instead of `+`.
+10. Self-test flakiness: the toolbar click failed in 2 of ~10 runs, then passed 5 of 5.
+    - Likely cause: real input during the test.
+    - The report now logs what the toolbar received, so the next failure will show whether the click arrived.
 
 **Done when:** everything from Phase 1 works from the keyboard, and settings survive a restart.
 

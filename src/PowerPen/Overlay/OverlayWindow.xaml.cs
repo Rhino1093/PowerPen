@@ -41,9 +41,6 @@ public partial class OverlayWindow : Window
         Ink.LostMouseCapture += (_, _) => GestureEnded?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Raised when the user presses Esc while drawing, asking to go back to Pointer mode.</summary>
-    public event EventHandler? ExitDrawModeRequested;
-
     /// <summary>Raised when the mouse button goes down on this overlay.</summary>
     public event EventHandler? GestureStarted;
 
@@ -64,13 +61,15 @@ public partial class OverlayWindow : Window
     /// <paramref name="tool"/>; in Pointer mode the ink stays visible and clicks pass through.
     /// </summary>
     /// <param name="isDrawing">True for Draw mode, false for Pointer mode.</param>
+    /// <param name="isInkVisible">False to hide the ink without deleting it.</param>
     /// <param name="tool">The tool to use in Draw mode.</param>
     /// <param name="attributes">Color/width settings for new strokes. Must be a copy this overlay can own.</param>
-    public void ApplyState(bool isDrawing, ToolType tool, DrawingAttributes attributes)
+    public void ApplyState(bool isDrawing, bool isInkVisible, ToolType tool, DrawingAttributes attributes)
     {
         Ink.DefaultDrawingAttributes = attributes;
         Ink.EditingMode = isDrawing ? InkStyle.EditingModeFor(tool) : InkCanvasEditingMode.None;
         Ink.Background = isDrawing ? HitTestableBrush : Brushes.Transparent;
+        Ink.Visibility = isInkVisible ? Visibility.Visible : Visibility.Hidden;
         SetClickThrough(!isDrawing);
     }
 
@@ -106,17 +105,6 @@ public partial class OverlayWindow : Window
         // On a DPI change WPF resizes the window to Windows' "suggested" size, which is not the exact monitor size.
         // Queue the fix at low priority so it runs after WPF has finished its own resize.
         Dispatcher.InvokeAsync(ApplyMonitorBounds, DispatcherPriority.Background);
-    }
-
-    /// <summary>Handles Esc to leave Draw mode.</summary>
-    protected override void OnPreviewKeyDown(KeyEventArgs e)
-    {
-        base.OnPreviewKeyDown(e);
-        if (e.Key == Key.Escape)
-        {
-            ExitDrawModeRequested?.Invoke(this, EventArgs.Empty);
-            e.Handled = true;
-        }
     }
 
     /// <summary>Turns mouse pass-through on or off. Skips the Win32 call when nothing changes.</summary>

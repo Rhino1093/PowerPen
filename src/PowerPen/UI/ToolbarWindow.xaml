@@ -102,16 +102,16 @@
         <!-- Mode and tools -->
         <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE8B0;"
                        Command="{Binding PointerCommand}" IsActive="{Binding IsPointerActive}"
-                       ToolTip="Pointer: ink stays, clicks go to your apps (Esc)" />
+                       ToolTip="{Binding PointerToolTip}" />
         <ui:ToolButton x:Name="PenButton" Style="{StaticResource ToolButtonStyle}" Content="&#xEE56;"
                        Command="{Binding PenCommand}" IsActive="{Binding IsPenActive}"
-                       ToolTip="Pen" />
+                       ToolTip="{Binding PenToolTip}" />
         <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE7E6;"
                        Command="{Binding HighlighterCommand}" IsActive="{Binding IsHighlighterActive}"
-                       ToolTip="Highlighter" />
+                       ToolTip="{Binding HighlighterToolTip}" />
         <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE75C;"
                        Command="{Binding EraserCommand}" IsActive="{Binding IsEraserActive}"
-                       ToolTip="Eraser: drag over a stroke to remove it" />
+                       ToolTip="{Binding EraserToolTip}" />
 
         <Rectangle Style="{StaticResource Divider}" />
 
@@ -126,7 +126,7 @@
                 <DataTemplate>
                     <ui:ToolButton Style="{StaticResource SwatchButtonStyle}"
                                    Background="{Binding Brush}" IsActive="{Binding IsSelected}"
-                                   Command="{Binding SelectCommand}" ToolTip="{Binding Name}" />
+                                   Command="{Binding SelectCommand}" ToolTip="{Binding ToolTip}" />
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -139,8 +139,11 @@
                      Fill="{Binding CurrentBrush}" Stroke="#5A5A5A" StrokeThickness="1" />
         </ui:ToolButton>
         <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE7A7;"
-                       Command="{Binding UndoCommand}" ToolTip="Undo" />
+                       Command="{Binding UndoCommand}" ToolTip="{Binding UndoToolTip}" />
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="{Binding InkToggleGlyph}"
+                       Command="{Binding ToggleInkCommand}" IsActive="{Binding IsInkHidden}"
+                       ToolTip="{Binding InkToggleToolTip}" />
         <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE74D;"
-                       Command="{Binding ClearAllCommand}" ToolTip="Clear all ink (Ctrl+Alt+C)" />
+                       Command="{Binding ClearAllCommand}" ToolTip="{Binding ClearAllToolTip}" />
     </StackPanel>
 </Window>

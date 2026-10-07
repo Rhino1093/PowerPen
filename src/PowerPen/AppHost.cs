@@ -1,5 +1,7 @@
+using System.Windows.Input;
 using PowerPen.Core;
 using PowerPen.Overlay;
+using PowerPen.Settings;
 using PowerPen.UI;
 
 namespace PowerPen;
@@ -11,18 +13,30 @@ namespace PowerPen;
 public sealed class AppHost : IDisposable
 {
     /// <summary>Creates and wires everything. Call <see cref="Start"/> to show it.</summary>
-    public AppHost()
+    /// <param name="settings">Validated settings.</param>
+    public AppHost(AppSettings settings)
     {
-        State = new AppState();
+        Settings = settings;
+        State = new AppState(settings);
         Undo = new UndoManager();
         Overlays = new OverlayManager(State, Undo);
         Commands = new AppCommands(State, Overlays, Undo);
-        Toolbar = new ToolbarWindow(new ToolbarViewModel(State, Commands, Undo));
+        Toolbar = new ToolbarWindow(new ToolbarViewModel(State, Commands, Undo, settings.Hotkeys));
 
         // Overlays jump above the toolbar whenever they're shown or clicked; put the toolbar back on top.
         Overlays.OverlaysRaised += (_, _) => Toolbar.BringToFront();
-        Overlays.ExitDrawModeRequested += (_, _) => Commands.EnterPointerMode();
+
+        Overlays.DrawModeKeyDown += (_, e) =>
+        {
+            // While Alt is held, WPF reports the real key in SystemKey.
+            Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (Commands.HandleDrawModeKey(key, Keyboard.Modifiers))
+                e.Handled = true;
+        };
     }
+
+    /// <summary>The settings PowerPen started with.</summary>
+    public AppSettings Settings { get; }
 
     /// <summary>The user's current selections.</summary>
     public AppState State { get; }

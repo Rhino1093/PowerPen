@@ -13,7 +13,7 @@ public static class InkStyle
 
         if (state.CurrentTool == ToolType.Highlighter)
         {
-            width *= AppState.HighlighterWidthMultiplier;
+            width *= state.HighlighterWidthMultiplier;
             return new DrawingAttributes
             {
                 Color = state.CurrentColor,

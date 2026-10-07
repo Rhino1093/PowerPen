@@ -5,6 +5,19 @@ using PowerPen.Interop;
 
 namespace PowerPen.Input;
 
+/// <summary>Why a hotkey couldn't be registered.</summary>
+public enum HotkeyError
+{
+    /// <summary>Registered successfully.</summary>
+    None,
+
+    /// <summary>Another app (or another copy of PowerPen) already uses this combination.</summary>
+    AlreadyInUse,
+
+    /// <summary>Windows refused for another reason.</summary>
+    Other,
+}
+
 /// <summary>
 /// Registers system-wide hotkeys (they work even while another app has focus) and runs the matching action when pressed.
 /// </summary>
@@ -30,48 +43,30 @@ public sealed class HotkeyService : IDisposable
         _messageWindow.AddHook(WndProc);
     }
 
-    /// <summary>
-    /// Registers <paramref name="modifiers"/> + <paramref name="key"/> to run <paramref name="action"/>.
-    /// </summary>
-    /// <param name="errorMessage">When registration fails: a message for the user explaining how to fix it.</param>
+    /// <summary>Registers <paramref name="hotkey"/> to run <paramref name="action"/>.</summary>
+    /// <param name="hotkey">The key combination.</param>
+    /// <param name="action">What to run when it's pressed.</param>
+    /// <param name="error">Why registration failed, or <see cref="HotkeyError.None"/>.</param>
     /// <returns><c>true</c> if the hotkey is now active.</returns>
-    public bool TryRegister(ModifierKeys modifiers, Key key, Action action, out string? errorMessage)
+    public bool TryRegister(Hotkey hotkey, Action action, out HotkeyError error)
     {
         int id = _nextId++;
 
         // WPF's ModifierKeys values (Alt=1, Control=2, Shift=4, Windows=8) are identical to Win32's MOD_* flags.
-        uint win32Modifiers = (uint)modifiers | NativeMethods.MOD_NOREPEAT;
-        uint virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
+        uint win32Modifiers = (uint)hotkey.Modifiers | NativeMethods.MOD_NOREPEAT;
+        uint virtualKey = (uint)KeyInterop.VirtualKeyFromKey(hotkey.Key);
 
         if (!NativeMethods.RegisterHotKey(_messageWindow.Handle, id, win32Modifiers, virtualKey))
         {
-            // Read the error code first, before any other call can overwrite it.
-            int error = Marshal.GetLastPInvokeError();
-            string name = Describe(modifiers, key);
-            errorMessage = error == NativeMethods.ERROR_HOTKEY_ALREADY_REGISTERED
-                ? $"{name} is already used by another app, so PowerPen can't use it.\n\n" +
-                  "To fix: close the app that uses this shortcut, then restart PowerPen."
-                : $"Windows wouldn't let PowerPen use {name}.\n\nTo fix: restart PowerPen. If it keeps happening, restart your PC.";
+            error = Marshal.GetLastPInvokeError() == NativeMethods.ERROR_HOTKEY_ALREADY_REGISTERED
+                ? HotkeyError.AlreadyInUse
+                : HotkeyError.Other;
             return false;
         }
 
         _actions[id] = action;
-        errorMessage = null;
+        error = HotkeyError.None;
         return true;
-    }
-
-    /// <summary>Formats a hotkey for display, e.g. "Ctrl+Alt+D".</summary>
-    public static string Describe(ModifierKeys modifiers, Key key)
-    {
-        var parts = new List<string>();
-        if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
-        if (modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
-        if (modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
-        if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
-
-        // WPF names the number-row keys D0–D9; show them as plain digits.
-        parts.Add(key is >= Key.D0 and <= Key.D9 ? ((int)(key - Key.D0)).ToString() : key.ToString());
-        return string.Join("+", parts);
     }
 
     /// <summary>Unregisters all hotkeys and destroys the hidden window.</summary>

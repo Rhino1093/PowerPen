@@ -15,7 +15,7 @@ public enum ToolType
     Eraser,
 }
 
-/// <summary>The three pen-size presets.</summary>
+/// <summary>The three pen-size presets, in order from thinnest to thickest.</summary>
 public enum PenSize
 {
     /// <summary>Thin line.</summary>

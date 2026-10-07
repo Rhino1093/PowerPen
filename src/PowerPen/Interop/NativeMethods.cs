@@ -222,6 +222,15 @@ internal static class NativeMethods
     /// <summary>INPUT type: keyboard event.</summary>
     public const uint INPUT_KEYBOARD = 1;
 
+    /// <summary>Mouse flag: the event moves the cursor.</summary>
+    public const uint MOUSEEVENTF_MOVE = 0x0001;
+
+    /// <summary>Mouse flag: coordinates are absolute (0–65535) rather than relative to the last position.</summary>
+    public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+
+    /// <summary>Mouse flag: absolute coordinates span the whole multi-monitor desktop, not just the main monitor.</summary>
+    public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+
     /// <summary>Mouse flag: left button pressed.</summary>
     public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
 
@@ -231,8 +240,17 @@ internal static class NativeMethods
     /// <summary>Keyboard flag: key released (omit for key pressed).</summary>
     public const uint KEYEVENTF_KEYUP = 0x0002;
 
-    /// <summary>Virtual-key code for Esc.</summary>
-    public const ushort VK_ESCAPE = 0x1B;
+    /// <summary>Virtual-key code for Shift (either side).</summary>
+    public const ushort VK_SHIFT = 0x10;
+
+    /// <summary>Virtual-key code for Ctrl (either side).</summary>
+    public const ushort VK_CONTROL = 0x11;
+
+    /// <summary>Virtual-key code for Alt (either side).</summary>
+    public const ushort VK_MENU = 0x12;
+
+    /// <summary>Virtual-key code for the left Windows key.</summary>
+    public const ushort VK_LWIN = 0x5B;
 
     /// <summary>One synthetic mouse or keyboard event for <see cref="SendInput"/>.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -276,6 +294,22 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetCursorPos(int x, int y);
+
+    /// <summary>GetSystemMetrics index: left edge of the whole multi-monitor desktop.</summary>
+    public const int SM_XVIRTUALSCREEN = 76;
+
+    /// <summary>GetSystemMetrics index: top edge of the whole multi-monitor desktop.</summary>
+    public const int SM_YVIRTUALSCREEN = 77;
+
+    /// <summary>GetSystemMetrics index: width of the whole multi-monitor desktop.</summary>
+    public const int SM_CXVIRTUALSCREEN = 78;
+
+    /// <summary>GetSystemMetrics index: height of the whole multi-monitor desktop.</summary>
+    public const int SM_CYVIRTUALSCREEN = 79;
+
+    /// <summary>Reads a system measurement such as the desktop size.</summary>
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int nIndex);
 
     #endregion
 

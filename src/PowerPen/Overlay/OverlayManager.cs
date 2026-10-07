@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Ink;
+using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using PowerPen.Core;
@@ -44,8 +46,11 @@ public sealed class OverlayManager : IDisposable
     /// </summary>
     public event EventHandler? OverlaysRaised;
 
-    /// <summary>Raised when the user presses Esc on an overlay.</summary>
-    public event EventHandler? ExitDrawModeRequested;
+    /// <summary>
+    /// Raised for every key pressed on an overlay. Overlays only have keyboard focus in Draw mode, so this is where
+    /// Draw-mode shortcuts come from. Handlers set <see cref="RoutedEventArgs.Handled"/> for keys they use.
+    /// </summary>
+    public event KeyEventHandler? DrawModeKeyDown;
 
     /// <summary>The current overlays, one per monitor, ordered left to right.</summary>
     public IReadOnlyList<OverlayWindow> Overlays => _overlays;
@@ -79,7 +84,8 @@ public sealed class OverlayManager : IDisposable
             };
             overlay.GestureStarted += (_, _) => _undo.BeginGroup();
             overlay.GestureEnded += (_, _) => _undo.EndGroup();
-            overlay.ExitDrawModeRequested += (_, _) => ExitDrawModeRequested?.Invoke(this, EventArgs.Empty);
+            // Preview (tunneling) so shortcuts are seen before the InkCanvas, which has its own Delete/Ctrl+C handling.
+            overlay.PreviewKeyDown += (sender, e) => DrawModeKeyDown?.Invoke(sender, e);
             overlay.Activated += (_, _) => OverlaysRaised?.Invoke(this, EventArgs.Empty);
 
             overlay.Show();
@@ -112,18 +118,18 @@ public sealed class OverlayManager : IDisposable
         CloseAll();
     }
 
-    /// <summary>Pushes the current mode, tool, color, and size to every overlay.</summary>
+    /// <summary>Pushes the current mode, visibility, tool, color, and size to every overlay.</summary>
     private void ApplyStateToAll()
     {
         DrawingAttributes attributes = InkStyle.Create(_state);
         foreach (OverlayWindow overlay in _overlays)
         {
             // Each overlay gets its own copy so a change on one monitor can never leak into another.
-            overlay.ApplyState(_state.IsDrawMode, _state.CurrentTool, attributes.Clone());
+            overlay.ApplyState(_state.IsDrawMode, _state.IsInkVisible, _state.CurrentTool, attributes.Clone());
         }
     }
 
-    /// <summary>Re-applies state whenever the user changes mode, tool, color, or size.</summary>
+    /// <summary>Re-applies state whenever the user changes mode, visibility, tool, color, or size.</summary>
     private void OnStateChanged(object? sender, PropertyChangedEventArgs e) => ApplyStateToAll();
 
     /// <summary>Returns the overlay on the monitor that currently contains the mouse cursor, if any.</summary>
