@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/PowerPen/PowerPen.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PowerPen.Tests/PowerPen.Tests.csproj" />
+  </Folder>
 </Solution>

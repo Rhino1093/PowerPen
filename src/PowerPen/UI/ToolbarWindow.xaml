@@ -1,0 +1,146 @@
+<Window x:Class="PowerPen.UI.ToolbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:PowerPen.UI"
+        Title="PowerPen"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual"
+        Background="#202020"
+        BorderBrush="#3C3C3C"
+        BorderThickness="1">
+
+    <Window.Resources>
+        <!-- Segoe Fluent Icons ships with Windows 11; MDL2 Assets is the Windows 10 fallback with the same code points. -->
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <!-- Square icon button. Triggers later in the list win, so Active beats hover and Pressed beats both. -->
+        <Style x:Key="ToolButtonStyle" TargetType="ui:ToolButton">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="20" />
+            <!-- Not focusable: the toolbar must never take keyboard focus from the overlay or your app. -->
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTipService.InitialShowDelay" Value="300" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ui:ToolButton">
+                        <Border x:Name="Bg" Background="Transparent" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#363636" />
+                            </Trigger>
+                            <Trigger Property="IsActive" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#2F5F8F" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#464646" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Round color swatch; the selected one gets a white ring. Its fill comes from Background. -->
+        <Style x:Key="SwatchButtonStyle" TargetType="ui:ToolButton">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="ToolTipService.InitialShowDelay" Value="300" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ui:ToolButton">
+                        <Grid Background="Transparent">
+                            <Ellipse x:Name="Ring" Stroke="#808080" StrokeThickness="2" Visibility="Hidden" />
+                            <Ellipse Width="12" Height="12" Fill="{TemplateBinding Background}" Stroke="#5A5A5A" StrokeThickness="1" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsActive" Value="True">
+                                <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="#F2F2F2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Divider" TargetType="Rectangle">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Fill" Value="#3C3C3C" />
+            <Setter Property="Margin" Value="4,4" />
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Width="40" Margin="4">
+        <!-- Drag handle -->
+        <Border Height="18" Background="Transparent" Cursor="SizeAll" ToolTip="Drag to move"
+                MouseLeftButtonDown="OnDragHandleMouseLeftButtonDown">
+            <TextBlock Text="&#xE76F;" FontFamily="{StaticResource IconFont}" FontSize="14" Foreground="#8A8A8A"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+
+        <!-- Mode and tools -->
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE8B0;"
+                       Command="{Binding PointerCommand}" IsActive="{Binding IsPointerActive}"
+                       ToolTip="Pointer: ink stays, clicks go to your apps (Esc)" />
+        <ui:ToolButton x:Name="PenButton" Style="{StaticResource ToolButtonStyle}" Content="&#xEE56;"
+                       Command="{Binding PenCommand}" IsActive="{Binding IsPenActive}"
+                       ToolTip="Pen" />
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE7E6;"
+                       Command="{Binding HighlighterCommand}" IsActive="{Binding IsHighlighterActive}"
+                       ToolTip="Highlighter" />
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE75C;"
+                       Command="{Binding EraserCommand}" IsActive="{Binding IsEraserActive}"
+                       ToolTip="Eraser: drag over a stroke to remove it" />
+
+        <Rectangle Style="{StaticResource Divider}" />
+
+        <!-- Colors: 2 columns x 4 rows -->
+        <ItemsControl ItemsSource="{Binding Swatches}" Focusable="False">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="2" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <ui:ToolButton Style="{StaticResource SwatchButtonStyle}"
+                                   Background="{Binding Brush}" IsActive="{Binding IsSelected}"
+                                   Command="{Binding SelectCommand}" ToolTip="{Binding Name}" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Rectangle Style="{StaticResource Divider}" />
+
+        <!-- Size: the dot shows the current size and color -->
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Command="{Binding CycleSizeCommand}" ToolTip="{Binding SizeToolTip}">
+            <Ellipse Width="{Binding SizeDotDiameter}" Height="{Binding SizeDotDiameter}"
+                     Fill="{Binding CurrentBrush}" Stroke="#5A5A5A" StrokeThickness="1" />
+        </ui:ToolButton>
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE7A7;"
+                       Command="{Binding UndoCommand}" ToolTip="Undo" />
+        <ui:ToolButton Style="{StaticResource ToolButtonStyle}" Content="&#xE74D;"
+                       Command="{Binding ClearAllCommand}" ToolTip="Clear all ink (Ctrl+Alt+C)" />
+    </StackPanel>
+</Window>

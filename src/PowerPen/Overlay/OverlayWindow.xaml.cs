@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using PowerPen.Core;
 using PowerPen.Interop;
 
 namespace PowerPen.Overlay;
@@ -22,6 +23,7 @@ public partial class OverlayWindow : Window
     private static readonly Brush HitTestableBrush = CreateFrozenBrush(Color.FromArgb(1, 0, 0, 0));
 
     private IntPtr _hwnd;
+    private bool _isClickThrough;
 
     /// <summary>Creates an overlay for <paramref name="monitor"/>. Call <see cref="Window.Show"/> to display it.</summary>
     public OverlayWindow(DisplayMonitor monitor)
@@ -29,18 +31,24 @@ public partial class OverlayWindow : Window
         InitializeComponent();
         TargetMonitor = monitor;
 
-        // Phase 0: fixed red pen. The toolbar and AppState take over tool/color selection in Phase 1.
-        Ink.DefaultDrawingAttributes = new DrawingAttributes
-        {
-            Color = Colors.Red,
-            Width = 4,
-            Height = 4,
-            FitToCurve = true, // Smooths mouse jitter into curves.
-        };
+        // Bigger than the default eraser so a quick swipe reliably catches thin strokes.
+        Ink.EraserShape = new EllipseStylusShape(16, 16);
+
+        // One mouse press-to-release is one "gesture"; the undo history groups everything in it into one step.
+        // The release handler uses handledEventsToo because InkCanvas marks mouse-up as handled.
+        PreviewMouseLeftButtonDown += (_, _) => GestureStarted?.Invoke(this, EventArgs.Empty);
+        AddHandler(MouseLeftButtonUpEvent, new MouseButtonEventHandler((_, _) => GestureEnded?.Invoke(this, EventArgs.Empty)), handledEventsToo: true);
+        Ink.LostMouseCapture += (_, _) => GestureEnded?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Raised when the user presses Esc while drawing, asking to go back to Pointer mode.</summary>
     public event EventHandler? ExitDrawModeRequested;
+
+    /// <summary>Raised when the mouse button goes down on this overlay.</summary>
+    public event EventHandler? GestureStarted;
+
+    /// <summary>Raised when the mouse button is released (or capture is lost) on this overlay.</summary>
+    public event EventHandler? GestureEnded;
 
     /// <summary>The monitor this overlay covers.</summary>
     public DisplayMonitor TargetMonitor { get; }
@@ -52,24 +60,18 @@ public partial class OverlayWindow : Window
     public StrokeCollection Strokes => Ink.Strokes;
 
     /// <summary>
-    /// Switches between Draw mode (overlay catches mouse input) and Pointer mode (ink stays visible,
-    /// clicks pass through to the apps underneath).
+    /// Applies the current mode and tool. In Draw mode the overlay catches the mouse and uses
+    /// <paramref name="tool"/>; in Pointer mode the ink stays visible and clicks pass through.
     /// </summary>
-    public void SetDrawMode(bool isDrawing)
+    /// <param name="isDrawing">True for Draw mode, false for Pointer mode.</param>
+    /// <param name="tool">The tool to use in Draw mode.</param>
+    /// <param name="attributes">Color/width settings for new strokes. Must be a copy this overlay can own.</param>
+    public void ApplyState(bool isDrawing, ToolType tool, DrawingAttributes attributes)
     {
-        if (isDrawing)
-        {
-            NativeMethods.RemoveExtendedStyle(_hwnd, NativeMethods.WS_EX_TRANSPARENT);
-            Ink.Background = HitTestableBrush;
-            Ink.EditingMode = InkCanvasEditingMode.Ink;
-        }
-        else
-        {
-            Ink.EditingMode = InkCanvasEditingMode.None;
-            Ink.Background = Brushes.Transparent;
-            // WS_EX_TRANSPARENT makes the whole window click-through, including pixels that have ink on them.
-            NativeMethods.AddExtendedStyle(_hwnd, NativeMethods.WS_EX_TRANSPARENT);
-        }
+        Ink.DefaultDrawingAttributes = attributes;
+        Ink.EditingMode = isDrawing ? InkStyle.EditingModeFor(tool) : InkCanvasEditingMode.None;
+        Ink.Background = isDrawing ? HitTestableBrush : Brushes.Transparent;
+        SetClickThrough(!isDrawing);
     }
 
     /// <summary>Moves and sizes the window to exactly cover its monitor, using physical pixels.</summary>
@@ -86,7 +88,7 @@ public partial class OverlayWindow : Window
         _hwnd = new WindowInteropHelper(this).Handle;
 
         NativeMethods.AddExtendedStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW);
-        SetDrawMode(false);
+        SetClickThrough(true); // Start in Pointer mode so a new overlay never blocks clicks by accident.
 
         // Position in physical pixels instead of WPF's Left/Top: WPF units depend on DPI,
         // which is ambiguous before the window knows which monitor it's on.
@@ -115,6 +117,20 @@ public partial class OverlayWindow : Window
             ExitDrawModeRequested?.Invoke(this, EventArgs.Empty);
             e.Handled = true;
         }
+    }
+
+    /// <summary>Turns mouse pass-through on or off. Skips the Win32 call when nothing changes.</summary>
+    private void SetClickThrough(bool enabled)
+    {
+        if (_hwnd == IntPtr.Zero || _isClickThrough == enabled)
+            return;
+
+        // WS_EX_TRANSPARENT makes the whole window click-through, including pixels that have ink on them.
+        if (enabled)
+            NativeMethods.AddExtendedStyle(_hwnd, NativeMethods.WS_EX_TRANSPARENT);
+        else
+            NativeMethods.RemoveExtendedStyle(_hwnd, NativeMethods.WS_EX_TRANSPARENT);
+        _isClickThrough = enabled;
     }
 
     /// <summary>Creates a frozen (read-only, thread-safe, faster to render) solid brush.</summary>

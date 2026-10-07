@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using System.Windows;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -13,13 +12,14 @@ using Drawing = System.Drawing;
 namespace PowerPen.Diagnostics;
 
 /// <summary>
-/// Automated check of the risky parts on the current machine, for every monitor:
-/// overlay placement, DPI, whether screenshots include the ink, and click-through.
+/// Automated check of PowerPen on the current machine. Per monitor: overlay placement, DPI, whether screenshots
+/// include the ink, and click-through. Overall: undo, toolbar z-order, and focus hand-back.
 /// Run with <c>PowerPen.exe --selftest [reportPath]</c>.
 /// </summary>
 /// <remarks>
 /// Screenshots are only inspected in memory and never saved, so nothing on the user's screen is stored.
-/// The test briefly shows a magenta line on each monitor (about 2 seconds).
+/// The test briefly shows the toolbar and a magenta line on each monitor. It also clicks the toolbar's Pen button
+/// and presses Esc (moving the mouse for about a second), only after confirming those inputs can only reach PowerPen.
 /// </remarks>
 public static class SelfTest
 {
@@ -45,27 +45,71 @@ public static class SelfTest
         report.AppendLine($"PowerPen self-test  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Windows {Environment.OSVersion.Version}, .NET {Environment.Version}");
 
-        using var overlays = new OverlayManager();
-        overlays.Start();
+        using var host = new AppHost();
+        host.Start();
+        IReadOnlyList<OverlayWindow> overlays = host.Overlays.Overlays;
 
-        report.AppendLine(overlays.Overlays.Select(o => o.TargetMonitor.Dpi).Distinct().Count() > 1
+        report.AppendLine(overlays.Select(o => o.TargetMonitor.Dpi).Distinct().Count() > 1
             ? "Monitors use different scaling: mixed-DPI placement IS being tested."
             : "All monitors use the same scaling: mixed-DPI placement is NOT being tested.");
 
-        foreach (OverlayWindow overlay in overlays.Overlays)
+        foreach (OverlayWindow overlay in overlays)
             overlay.Strokes.Add(CreateMarkerStroke(overlay.TargetMonitor));
 
-        // Pointer mode (the startup state): check placement, DPI, capture, and click-through.
-        await WaitForScreenAsync();
-        var pointerModeHits = overlays.Overlays.ToDictionary(o => o, o => WindowAtMarker(o) == o.Handle);
+        // Undo/redo through the real wiring (stroke events → undo history), then put everything back.
+        int strokeCount = CountStrokes(overlays);
+        host.Commands.Undo();
+        bool undoRemoved = CountStrokes(overlays) == strokeCount - 1;
+        host.Commands.Redo();
+        bool redoRestored = CountStrokes(overlays) == strokeCount;
 
-        // Draw mode: the same spot must now hit the overlay. SetDrawMode doesn't take focus, so the user's app stays active.
-        overlays.SetDrawMode(true);
-        await WaitForScreenAsync();
-        var drawModeHits = overlays.Overlays.ToDictionary(o => o, o => WindowAtMarker(o) == o.Handle);
-        overlays.SetDrawMode(false);
+        host.Commands.ClearAll();
+        bool cleared = CountStrokes(overlays) == 0;
+        host.Commands.Undo();
+        bool clearUndoneInOneStep = CountStrokes(overlays) == strokeCount;
 
-        foreach (OverlayWindow overlay in overlays.Overlays)
+        // Pointer mode (the startup state).
+        await WaitForScreenAsync();
+        var pointerModeHits = overlays.ToDictionary(o => o, o => WindowAtMarker(o) == o.Handle);
+
+        // Draw mode the way a user enters it: a real (synthetic) click on the toolbar's Pen button.
+        // Windows only lets an app take focus right after the user interacts with it, so calling
+        // EnterDrawMode() directly from a background-launched test can't prove focus works.
+        IntPtr originalForeground = NativeMethods.GetForegroundWindow();
+        NativeMethods.GetCursorPos(out NativeMethods.POINT originalCursor);
+        System.Windows.Point pen = host.Toolbar.PenButtonScreenCenter();
+        var penPoint = new NativeMethods.POINT { X = (int)pen.X, Y = (int)pen.Y };
+
+        // Safety: only click if that exact spot belongs to the toolbar, so a stray click can never reach the user's apps.
+        bool penClickable = NativeMethods.WindowFromPoint(penPoint) == host.Toolbar.Handle;
+        if (penClickable)
+            SyntheticInput.ClickAt(penPoint.X, penPoint.Y);
+        await WaitForScreenAsync();
+
+        bool penStartedDrawing = host.State.IsDrawMode && host.State.CurrentTool == Core.ToolType.Pen;
+        var drawModeHits = overlays.ToDictionary(o => o, o => WindowAtMarker(o) == o.Handle);
+        bool overlayHasFocus = IsOverlay(overlays, NativeMethods.GetForegroundWindow());
+
+        // Simulate clicking the overlay under the toolbar: activating it pushes it above the toolbar,
+        // and the toolbar must bring itself back on top.
+        overlays.FirstOrDefault(o => o.TargetMonitor.Bounds.Contains(penPoint.X, penPoint.Y))?.Activate();
+        await WaitForScreenAsync();
+        bool toolbarOnTop = NativeMethods.WindowFromPoint(penPoint) == host.Toolbar.Handle;
+
+        // Leave Draw mode with Esc. Safety: only press it if a PowerPen overlay has focus, so it can't reach the user's app.
+        bool escLeftDrawMode = false;
+        if (IsOverlay(overlays, NativeMethods.GetForegroundWindow()))
+        {
+            SyntheticInput.PressEscape();
+            await WaitForScreenAsync();
+            escLeftDrawMode = !host.State.IsDrawMode;
+        }
+        host.Commands.EnterPointerMode(); // In case Esc wasn't sent; does nothing if already in Pointer mode.
+        await WaitForScreenAsync();
+        bool focusRestored = NativeMethods.GetForegroundWindow() == originalForeground;
+        NativeMethods.SetCursorPos(originalCursor.X, originalCursor.Y);
+
+        foreach (OverlayWindow overlay in overlays)
         {
             DisplayMonitor monitor = overlay.TargetMonitor;
             report.AppendLine();
@@ -89,6 +133,17 @@ public static class SelfTest
             Check(!pointerModeHits[overlay], "Pointer mode: clicks pass through the ink to the app underneath");
             Check(drawModeHits[overlay], "Draw mode: clicks are caught by PowerPen");
         }
+
+        report.AppendLine();
+        report.AppendLine("Undo, toolbar, and focus");
+        Check(undoRemoved && redoRestored, "Undo removes the last stroke; Redo brings it back");
+        Check(cleared && clearUndoneInOneStep, "Clear all is a single undo step across all monitors");
+        Check(penClickable, "Toolbar is on top and clickable");
+        Check(penStartedDrawing, "Clicking Pen on the toolbar starts drawing with the pen");
+        Check(overlayHasFocus, "Entering Draw mode focuses an overlay (so Esc works)");
+        Check(toolbarOnTop, "Toolbar stays clickable after an overlay is clicked");
+        Check(escLeftDrawMode, "Esc switches back to Pointer mode");
+        Check(focusRestored, "Leaving Draw mode gives focus back to the app you were in");
 
         report.AppendLine();
         report.AppendLine(allPassed ? "RESULT: ALL PASSED" : "RESULT: FAILURES FOUND");
@@ -117,13 +172,18 @@ public static class SelfTest
         });
     }
 
+    /// <summary>Total number of strokes across all monitors.</summary>
+    private static int CountStrokes(IEnumerable<OverlayWindow> overlays) => overlays.Sum(o => o.Strokes.Count);
+
     /// <summary>Returns the window Windows would send a click to at the center of the marker line.</summary>
     private static IntPtr WindowAtMarker(OverlayWindow overlay)
     {
         PixelRect b = overlay.TargetMonitor.Bounds;
-        var point = new NativeMethods.POINT { X = b.X + b.Width / 2, Y = b.Y + b.Height / 2 };
-        return NativeMethods.WindowFromPoint(point);
+        return NativeMethods.WindowFromPoint(new NativeMethods.POINT { X = b.X + b.Width / 2, Y = b.Y + b.Height / 2 });
     }
+
+    /// <summary>True if <paramref name="hwnd"/> is one of the overlays.</summary>
+    private static bool IsOverlay(IEnumerable<OverlayWindow> overlays, IntPtr hwnd) => overlays.Any(o => o.Handle == hwnd);
 
     /// <summary>True if the captured pixel on the marker line at <paramref name="xFraction"/> of the width is the marker color.</summary>
     private static bool IsMarkerPixel(Drawing.Bitmap shot, double xFraction)

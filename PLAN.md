@@ -1,6 +1,6 @@
 # PowerPen — Build Plan
 
-**Status:** v0.2 — 2026-10-07. Open questions answered (see [§11](#11-decisions)). Phase 0 in progress.
+**Status:** v0.4 — 2026-10-07. Phases 0–1 done. Phase 2 in progress.
 
 ---
 
@@ -85,7 +85,7 @@ A personal Epic Pen Pro–style screen annotation tool for Windows. Draw on top 
   - 2560×1440 (main)
   - 1920×1080 to the right
   - 1080×1920 **portrait** to the left, at negative coordinates
-  This never exercises mixed scaling, but teammates' laptops (usually 125–150%) will. Test it once by temporarily setting one monitor to 125%.
+  This never exercises mixed scaling, but teammates' laptops (usually 125–150%) will. Verified by hand with one monitor at 150% (2026-10-07).
 
 **Recipe**
 1. Make the app Per-Monitor V2 DPI aware in `app.manifest`.
@@ -279,16 +279,18 @@ PowerPen/
 ├─ src/PowerPen/
 │  ├─ PowerPen.csproj
 │  ├─ app.manifest           Per-Monitor V2 DPI awareness
-│  ├─ App.xaml(.cs)
-│  ├─ Core/                  AppState, AppCommands, ToolType, UndoManager
-│  ├─ Overlay/               OverlayManager, OverlayWindow, ShapeBuilder, TextTool
-│  ├─ Capture/               ScreenshotService, RegionSelectWindow
-│  ├─ Input/                 HotkeyService, HotkeyParser, DrawModeKeys
-│  ├─ Settings/              AppSettings, SettingsService, SettingsWindow
-│  ├─ UI/                    ToolbarWindow, ToolbarViewModel, ToastWindow, TrayIcon
-│  ├─ Interop/               NativeMethods, MonitorService, KnownFolders
-│  └─ Assets/                PowerPen.ico
-└─ tests/PowerPen.Tests/     xUnit: ShapeBuilder, HotkeyParser, settings round-trip, file naming
+│  ├─ App.xaml(.cs)          entry point + global hotkeys
+│  ├─ AppHost.cs             builds and wires the main objects (shared with the self-test)
+│  ├─ Core/                  AppState, AppCommands, ToolType, InkStyle, UndoManager, UndoActions
+│  ├─ Overlay/               OverlayManager, OverlayWindow · later: ShapeBuilder, TextTool
+│  ├─ Capture/               ScreenCapture · later: ScreenshotService, RegionSelectWindow
+│  ├─ Input/                 HotkeyService · later: HotkeyParser, DrawModeKeys
+│  ├─ Settings/              later: AppSettings, SettingsService, SettingsWindow
+│  ├─ UI/                    ToolbarWindow, ToolbarViewModel, SwatchViewModel, ToolButton · later: ToastWindow, TrayIcon
+│  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer · later: KnownFolders
+│  ├─ Diagnostics/           SelfTest, SyntheticInput
+│  └─ Assets/                later: PowerPen.ico
+└─ tests/PowerPen.Tests/     xUnit: UndoManager · later: ShapeBuilder, HotkeyParser, settings, file naming
 ```
 
 ---
@@ -297,7 +299,7 @@ PowerPen/
 
 Each phase ends with something you can run and use.
 
-### Phase 0 — Test the risky parts
+### Phase 0 — Test the risky parts ✅ done (commit `8f9dadf`)
 1. `git init`, then create the solution and WPF project with the Per-Monitor V2 manifest.
 2. Show one overlay per monitor, correctly sized at mixed scaling.
 3. Draw with a red pen in an InkCanvas.
@@ -312,10 +314,14 @@ Each phase ends with something you can run and use.
 
 **Done when:** the self-test passes on every monitor, and drawing by hand feels lag-free.
 
-### Phase 1 — Core drawing + toolbar
+### Phase 1 — Core drawing + toolbar ✅ done (manually tested 2026-10-07)
 1. `AppState`, `AppCommands`, and `ToolbarWindow` with Pointer, Pen, Highlighter, Eraser, colors, thickness, Undo, and Clear.
 2. `UndoManager` across all monitors.
 3. `Esc` exits Draw mode and focus goes back to the previous app.
+4. Self-test extended to cover undo, toolbar z-order, and focus.
+   - ⚠ Windows only lets an app take focus right after the user interacts with it. So the self-test sends a real (synthetic) click to the Pen button and presses Esc.
+   - It only clicks after confirming the spot belongs to the toolbar, and only presses Esc when a PowerPen overlay has focus.
+   - The mouse moves for about a second while this runs.
 
 **Done when:** you can annotate and undo using only the toolbar.
 
@@ -347,8 +353,11 @@ Each phase ends with something you can run and use.
 
 ### Phase 6 — Package & share
 1. Publish a single `.exe` (see §10).
-2. Test on a teammate's machine that has no .NET installed and a different monitor setup.
-3. Write `README.md` with a hotkey cheat sheet.
+2. **Gate:** set one monitor to a different scaling and run `--selftest`.
+   - Mixed scaling was verified by hand at 150% on 2026-10-07 (Phase 1).
+   - Re-check anyway, because Phases 3–5 add new windows (region select, toast, settings) that also need correct placement.
+3. Test on a teammate's machine that has no .NET installed and a different monitor setup.
+4. Write `README.md` with a hotkey cheat sheet.
 
 ---
 

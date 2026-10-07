@@ -19,6 +19,9 @@ internal static class NativeMethods
     /// <summary>Extended style: hides the window from Alt+Tab.</summary>
     public const int WS_EX_TOOLWINDOW = 0x00000080;
 
+    /// <summary>Extended style: clicking the window does not activate it (focus stays with the current app).</summary>
+    public const int WS_EX_NOACTIVATE = 0x08000000;
+
     /// <summary>Special z-order value for SetWindowPos: place the window above all non-topmost windows.</summary>
     public static readonly IntPtr HWND_TOPMOST = new(-1);
 
@@ -143,6 +146,24 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(POINT point);
 
+    /// <summary>Returns the window the user is currently working in (the one receiving keyboard input).</summary>
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    /// <summary>Brings a window to the front and gives it keyboard focus.</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    /// <summary>Gets the ID of the process that owns a window.</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    /// <summary>True if the handle still refers to an existing window.</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindow(IntPtr hWnd);
+
     /// <summary>Gets the mouse cursor position in physical screen pixels.</summary>
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -190,6 +211,71 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool BitBlt(IntPtr hdcDest, int xDest, int yDest, int width, int height,
         IntPtr hdcSrc, int xSrc, int ySrc, uint rasterOp);
+
+    #endregion
+
+    #region Synthetic input (self-test only)
+
+    /// <summary>INPUT type: mouse event.</summary>
+    public const uint INPUT_MOUSE = 0;
+
+    /// <summary>INPUT type: keyboard event.</summary>
+    public const uint INPUT_KEYBOARD = 1;
+
+    /// <summary>Mouse flag: left button pressed.</summary>
+    public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+
+    /// <summary>Mouse flag: left button released.</summary>
+    public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+
+    /// <summary>Keyboard flag: key released (omit for key pressed).</summary>
+    public const uint KEYEVENTF_KEYUP = 0x0002;
+
+    /// <summary>Virtual-key code for Esc.</summary>
+    public const ushort VK_ESCAPE = 0x1B;
+
+    /// <summary>One synthetic mouse or keyboard event for <see cref="SendInput"/>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT
+    {
+        public uint type;
+        public InputUnion u;
+    }
+
+    /// <summary>The mouse or keyboard payload of an <see cref="INPUT"/> (they share memory, like a C union).</summary>
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputUnion
+    {
+        [FieldOffset(0)] public MOUSEINPUT mi;
+        [FieldOffset(0)] public KEYBDINPUT ki;
+    }
+
+    /// <summary>Synthetic mouse event data.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT
+    {
+        public int dx, dy;
+        public uint mouseData, dwFlags, time;
+        public IntPtr dwExtraInfo;
+    }
+
+    /// <summary>Synthetic keyboard event data.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT
+    {
+        public ushort wVk, wScan;
+        public uint dwFlags, time;
+        public IntPtr dwExtraInfo;
+    }
+
+    /// <summary>Injects mouse/keyboard events as if the user performed them. Returns how many were sent.</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    /// <summary>Moves the mouse cursor to a position in physical screen pixels.</summary>
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetCursorPos(int x, int y);
 
     #endregion
 
