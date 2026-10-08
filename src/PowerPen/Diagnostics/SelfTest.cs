@@ -34,6 +34,13 @@ public static class SelfTest
     /// <summary>An unusual color that is unlikely to already be on screen, so finding it in a capture proves the ink was captured.</summary>
     private static readonly Color MarkerColor = Color.FromRgb(255, 0, 254);
 
+    /// <summary>
+    /// How <see cref="MarkerColor"/> actually comes out in screen captures on this PC right now. Usually identical, but
+    /// screen filters (Night light, HDR, color profiles) can be applied before the capture: with Night light on,
+    /// magenta was measured as R=224 G=1 B=93. Measured once at the start (see <see cref="CalibrateAsync"/>).
+    /// </summary>
+    private static Color _capturedMarkerColor = MarkerColor;
+
     /// <summary>Points along the marker line to sample, as fractions of the monitor width.</summary>
     private static readonly double[] SampleFractions = [0.30, 0.40, 0.50, 0.60, 0.70];
 
@@ -64,11 +71,11 @@ public static class SelfTest
 
         void Skip(string description, string reason) => report.AppendLine($"  [SKIP] {description} ({reason})");
 
-        report.AppendLine($"PowerPen self-test  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        report.AppendLine($"PowerPen {App.Version} self-test  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         report.AppendLine($"Windows {Environment.OSVersion.Version}, .NET {Environment.Version}");
         report.AppendLine("Tip: using the mouse or keyboard while the test runs (about 30 seconds) can cause false failures.");
 
-        using var host = new AppHost(new AppSettings());
+        using var host = new AppHost(new AppSettings(), SettingsStore.InMemory());
         host.Screenshots.DryRun = true; // Screenshots stay in memory: nothing saved to disk, clipboard untouched.
         host.Start();
         IReadOnlyList<OverlayWindow> overlays = host.Overlays.Overlays;
@@ -77,6 +84,15 @@ public static class SelfTest
         report.AppendLine(overlays.Select(o => o.TargetMonitor.Dpi).Distinct().Count() > 1
             ? "Monitors use different scaling: mixed-DPI placement IS being tested."
             : "All monitors use the same scaling: mixed-DPI placement is NOT being tested.");
+
+        // Learn what the marker color looks like in captures on this screen (Night light etc. can change it).
+        (bool inkCapturable, string calibrationNote) = await CalibrateAsync(mainOverlay);
+        report.AppendLine(calibrationNote);
+        if (!inkCapturable)
+        {
+            allPassed = false;
+            report.AppendLine("  [FAIL] Screen captures show PowerPen's ink (the marker changed nothing in the capture)");
+        }
 
         foreach (OverlayWindow overlay in overlays)
             overlay.Strokes.Add(CreateMarkerStroke(overlay.TargetMonitor));
@@ -190,6 +206,10 @@ public static class SelfTest
         string? screenshotSkipReason = await RunScreenshotChecksAsync(host, overlays, mainOverlay, screenshotResults);
         await WaitForScreenAsync();
         bool focusRestoredAfterScreenshots = NativeMethods.GetForegroundWindow() == originalForeground;
+
+        // --- Toolbar and settings (Phase 5).
+        var toolbarResults = new List<(string Description, bool Passed)>();
+        await RunToolbarAndSettingsChecksAsync(host, mainOverlay, toolbarResults);
         NativeMethods.SetCursorPos(originalCursor.X, originalCursor.Y);
 
         // --- Per-monitor results.
@@ -267,6 +287,11 @@ public static class SelfTest
         foreach ((string description, bool passed) in screenshotResults)
             Check(passed, description);
         Check(focusRestoredAfterScreenshots, "Focus returns to your app afterwards");
+
+        report.AppendLine();
+        report.AppendLine("Toolbar and settings (changed in memory only)");
+        foreach ((string description, bool passed) in toolbarResults)
+            Check(passed, description);
 
         report.AppendLine();
         report.AppendLine("Unexpected errors");
@@ -404,26 +429,7 @@ public static class SelfTest
         NativeMethods.POINT At(double fx, double fy) =>
             new() { X = area.X + (int)(area.Width * fx), Y = area.Y + (int)(area.Height * fy) };
 
-        // Toolbar hidden from captures: put a magenta line on the overlay right under the toolbar. If the toolbar is
-        // excluded, a capture of its area shows the line; if not, it shows the toolbar's dark buttons instead.
-        NativeMethods.GetWindowRect(host.Toolbar.Handle, out NativeMethods.RECT toolbar);
-        PixelRect toolbarArea = PixelRect.FromRect(toolbar);
-        int toolbarMiddle = toolbarArea.Y + toolbarArea.Height / 2;
-        Point lineStart = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.X - 20, Y = toolbarMiddle });
-        Point lineEnd = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.Right + 20, Y = toolbarMiddle });
-        Stroke underToolbar = CreateMarkerLine(lineStart, lineEnd);
-        main.Strokes.Add(underToolbar);
-        await WaitForScreenAsync();
-        int visibleThroughToolbar;
-        using (Drawing.Bitmap shot = ScreenCapture.Capture(toolbarArea))
-        {
-            visibleThroughToolbar = SampleFractions.Count(f =>
-            {
-                Drawing.Color pixel = shot.GetPixel((int)(shot.Width * f), shot.Height / 2);
-                return IsMarkerColor(pixel.R, pixel.G, pixel.B);
-            });
-        }
-        main.Strokes.Remove(underToolbar);
+        int visibleThroughToolbar = await CountVisibleThroughToolbarAsync(host, main);
         results.Add(($"Toolbar is left out of screenshots and screen shares ({visibleThroughToolbar}/{SampleFractions.Length} points showed what's underneath)",
             visibleThroughToolbar >= SampleFractions.Length - 1));
 
@@ -482,6 +488,85 @@ public static class SelfTest
         bool selectionGone = !overlays.Any(o => IsSelectionWindowAt(o.TargetMonitor, overlays, host));
         results.Add(("Esc cancels and closes the selection screens", cancelled != null && cancelled.Image == null && selectionGone));
         return null;
+    }
+
+    /// <summary>
+    /// Puts a magenta line on the overlay right under the toolbar, captures the toolbar's area, and counts how many
+    /// sample points show the line. If the toolbar is hidden from captures they all do; if not, they show the
+    /// toolbar's dark buttons instead.
+    /// </summary>
+    private static async Task<int> CountVisibleThroughToolbarAsync(AppHost host, OverlayWindow main)
+    {
+        NativeMethods.GetWindowRect(host.Toolbar.Handle, out NativeMethods.RECT toolbar);
+        PixelRect toolbarArea = PixelRect.FromRect(toolbar);
+        int toolbarMiddle = toolbarArea.Y + toolbarArea.Height / 2;
+        Point lineStart = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.X - 20, Y = toolbarMiddle });
+        Point lineEnd = ToOverlay(main, new NativeMethods.POINT { X = toolbarArea.Right + 20, Y = toolbarMiddle });
+        Stroke underToolbar = CreateMarkerLine(lineStart, lineEnd);
+        main.Strokes.Add(underToolbar);
+        await WaitForScreenAsync();
+        try
+        {
+            using Drawing.Bitmap shot = ScreenCapture.Capture(toolbarArea);
+            return SampleFractions.Count(f =>
+            {
+                Drawing.Color pixel = shot.GetPixel((int)(shot.Width * f), shot.Height / 2);
+                return IsMarkerColor(pixel.R, pixel.G, pixel.B);
+            });
+        }
+        finally
+        {
+            main.Strokes.Remove(underToolbar);
+        }
+    }
+
+    /// <summary>
+    /// Phase 5 checks: settings apply without a restart, capture-hiding can be switched at runtime, and the toolbar
+    /// collapses and expands with real clicks. Settings are only changed in memory (the self-test never saves them).
+    /// </summary>
+    private static async Task RunToolbarAndSettingsChecksAsync(AppHost host, OverlayWindow main, List<(string Description, bool Passed)> results)
+    {
+        // New colors and sizes take effect right away.
+        AppSettings changed = host.Settings.Clone();
+        changed.Colors.RemoveRange(3, changed.Colors.Count - 3);
+        changed.HighlighterWidthMultiplier = 5;
+        host.ApplySettings(changed);
+        await ShortWaitAsync();
+        results.Add(("Saved settings apply without a restart (toolbar now shows 3 colors)",
+            host.State.Palette.Count == 3 && host.ToolbarViewModel.Swatches.Count == 3 && host.State.HighlighterWidthMultiplier == 5));
+        host.ApplySettings(new AppSettings());
+        await ShortWaitAsync();
+
+        // "Hide toolbar from captures" can be switched off and back on while running.
+        host.Toolbar.HideFromCapture = false;
+        int visibleWhenIncluded = await CountVisibleThroughToolbarAsync(host, main);
+        host.Toolbar.HideFromCapture = true;
+        int visibleWhenHidden = await CountVisibleThroughToolbarAsync(host, main);
+        results.Add(("\"Hide the toolbar from screenshots\" can be switched off and on while running",
+            visibleWhenIncluded == 0 && visibleWhenHidden >= SampleFractions.Length - 1));
+
+        // Collapse and expand by clicking, like a user. Safety: only click spots that belong to the toolbar.
+        double scale = main.TargetMonitor.Scale;
+        NativeMethods.POINT collapseButton = ScreenPoint(host.Toolbar.ButtonScreenCenter("CollapseButton"));
+        if (NativeMethods.WindowFromPoint(collapseButton) != host.Toolbar.Handle)
+        {
+            results.Add(("Collapse button is clickable", false));
+            return;
+        }
+        SyntheticInput.ClickAt(collapseButton);
+        await WaitForScreenAsync();
+        NativeMethods.GetWindowRect(host.Toolbar.Handle, out NativeMethods.RECT collapsedRect);
+        bool collapsed = host.ToolbarViewModel.IsCollapsed && collapsedRect.Bottom - collapsedRect.Top < 120 * scale;
+
+        NativeMethods.POINT expandButton = ScreenPoint(host.Toolbar.ButtonScreenCenter("ExpandButton"));
+        if (NativeMethods.WindowFromPoint(expandButton) == host.Toolbar.Handle)
+        {
+            SyntheticInput.ClickAt(expandButton);
+            await WaitForScreenAsync();
+        }
+        NativeMethods.GetWindowRect(host.Toolbar.Handle, out NativeMethods.RECT expandedRect);
+        bool expanded = !host.ToolbarViewModel.IsCollapsed && expandedRect.Bottom - expandedRect.Top > 300 * scale;
+        results.Add(("Collapse shrinks the toolbar to one button; clicking it brings the toolbar back", collapsed && expanded));
     }
 
     /// <summary>
@@ -621,14 +706,58 @@ public static class SelfTest
         return IsMarkerColor(pixel.R, pixel.G, pixel.B);
     }
 
-    /// <summary>True if a red/green/blue value is the marker color, with a small tolerance for rounding.</summary>
+    /// <summary>
+    /// True if a captured red/green/blue value is the marker color as it appears in captures on this screen
+    /// (see <see cref="_capturedMarkerColor"/>), with a small tolerance for rounding.
+    /// </summary>
     private static bool IsMarkerColor(int red, int green, int blue)
     {
-        const int tolerance = 12;
-        return Math.Abs(red - MarkerColor.R) <= tolerance
-            && Math.Abs(green - MarkerColor.G) <= tolerance
-            && Math.Abs(blue - MarkerColor.B) <= tolerance;
+        const int tolerance = 16;
+        return Math.Abs(red - _capturedMarkerColor.R) <= tolerance
+            && Math.Abs(green - _capturedMarkerColor.G) <= tolerance
+            && Math.Abs(blue - _capturedMarkerColor.B) <= tolerance;
     }
+
+    /// <summary>
+    /// Measures how the marker color comes out in screen captures right now: captures one spot without a marker,
+    /// then with one, and compares. Screen filters like Night light change captured colors, so later checks look for
+    /// the measured color rather than pure magenta.
+    /// </summary>
+    /// <returns>Whether the marker showed up in the capture at all, and a line for the report.</returns>
+    private static async Task<(bool InkCapturable, string Note)> CalibrateAsync(OverlayWindow main)
+    {
+        // A spot near the top-right of the main monitor, away from every other check's area.
+        PixelRect area = main.TargetMonitor.Bounds;
+        var spot = new NativeMethods.POINT { X = area.X + (int)(area.Width * 0.85), Y = area.Y + (int)(area.Height * 0.12) };
+        Point center = ToOverlay(main, spot);
+
+        Drawing.Color before = CapturePixel(spot);
+        Stroke marker = CreateMarkerLine(center - new Vector(30, 0), center + new Vector(30, 0));
+        main.Strokes.Add(marker);
+        await WaitForScreenAsync();
+        Drawing.Color after = CapturePixel(spot);
+        main.Strokes.Remove(marker);
+
+        int change = Math.Abs(after.R - before.R) + Math.Abs(after.G - before.G) + Math.Abs(after.B - before.B);
+        if (change < 60)
+            return (false, $"Capture calibration: the marker didn't show up in a screen capture (pixel {Describe(before)} → {Describe(after)}).");
+
+        _capturedMarkerColor = Color.FromRgb(after.R, after.G, after.B);
+        bool adjusted = Math.Abs(after.R - MarkerColor.R) + Math.Abs(after.G - MarkerColor.G) + Math.Abs(after.B - MarkerColor.B) > 24;
+        return (true, adjusted
+            ? $"Note: this screen adjusts colors before capture (e.g. Night light, HDR, or a color profile). Magenta ink is captured as {Describe(after)}; checks use that. Screenshots taken now will show the same tint."
+            : "Capture calibration: ink colors are captured exactly.");
+    }
+
+    /// <summary>Captures a single screen pixel (physical coordinates).</summary>
+    private static Drawing.Color CapturePixel(NativeMethods.POINT point)
+    {
+        using Drawing.Bitmap shot = ScreenCapture.Capture(new PixelRect(point.X, point.Y, 1, 1));
+        return shot.GetPixel(0, 0);
+    }
+
+    /// <summary>Formats a color for the report, e.g. "R=224 G=1 B=93".</summary>
+    private static string Describe(Drawing.Color color) => $"R={color.R} G={color.G} B={color.B}";
 
     /// <summary>Lets WPF finish rendering and gives Windows' compositor time to put the result on screen.</summary>
     private static async Task WaitForScreenAsync()

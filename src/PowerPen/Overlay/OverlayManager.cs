@@ -46,6 +46,9 @@ public sealed class OverlayManager : IDisposable
     /// </summary>
     public event EventHandler? OverlaysRaised;
 
+    /// <summary>Raised after the overlays were rebuilt for a new monitor layout (also once at startup).</summary>
+    public event EventHandler? MonitorsChanged;
+
     /// <summary>
     /// Raised for every key pressed on an overlay. Overlays only have keyboard focus in Draw mode, so this is where
     /// Draw-mode shortcuts come from. Handlers set <see cref="RoutedEventArgs.Handled"/> for keys they use.
@@ -102,6 +105,7 @@ public sealed class OverlayManager : IDisposable
 
         ApplyStateToAll();
         OverlaysRaised?.Invoke(this, EventArgs.Empty);
+        MonitorsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Focuses the overlay on the monitor under the mouse, so it receives keys like Esc.</summary>

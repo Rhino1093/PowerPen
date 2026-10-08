@@ -104,7 +104,19 @@
 
     <!-- Root carries the background and border so the toolbar can also be rendered to an image (see SaveSnapshot). -->
     <Border x:Name="Root" Background="#202020" BorderBrush="#3C3C3C" BorderThickness="1">
-        <StackPanel Width="84" Margin="4">
+        <Grid>
+        <!-- Collapsed: a drag handle and one button that brings the toolbar back (lit while drawing). -->
+        <StackPanel Width="40" Margin="4" Visibility="{Binding CollapsedVisibility}">
+            <Border Height="14" Background="Transparent" Cursor="SizeAll" ToolTip="Drag to move"
+                    MouseLeftButtonDown="OnDragHandleMouseLeftButtonDown">
+                <TextBlock Text="&#xE76F;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="#8A8A8A"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ui:ToolButton x:Name="ExpandButton" Style="{StaticResource ToolButtonStyle}" Content="&#xEE56;"
+                           Command="{Binding ExpandCommand}" IsActive="{Binding IsDrawing}" ToolTip="{Binding ExpandToolTip}" />
+        </StackPanel>
+
+        <StackPanel Width="84" Margin="4" Visibility="{Binding ExpandedVisibility}">
             <!-- Drag handle -->
             <Border Height="18" Background="Transparent" Cursor="SizeAll" ToolTip="Drag to move"
                     MouseLeftButtonDown="OnDragHandleMouseLeftButtonDown">
@@ -189,7 +201,12 @@
                                Command="{Binding ClearAllCommand}" ToolTip="{Binding ClearAllToolTip}" />
                 <ui:ToolButton x:Name="ScreenshotButton" Style="{StaticResource ToolButtonStyle}" Content="&#xE722;"
                                Command="{Binding ScreenshotCommand}" ToolTip="{Binding ScreenshotToolTip}" />
+                <ui:ToolButton x:Name="SettingsButton" Style="{StaticResource ToolButtonStyle}" Content="&#xE713;"
+                               Command="{Binding OpenSettingsCommand}" ToolTip="{Binding SettingsToolTip}" />
+                <ui:ToolButton x:Name="CollapseButton" Style="{StaticResource ToolButtonStyle}" Content="&#xE70E;"
+                               Command="{Binding CollapseCommand}" ToolTip="{Binding CollapseToolTip}" />
             </UniformGrid>
         </StackPanel>
+        </Grid>
     </Border>
 </Window>

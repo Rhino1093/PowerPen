@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using System.Windows.Input;
 using System.Windows.Media;
 using PowerPen.Input;
@@ -40,6 +41,29 @@ public sealed class AppSettings
 
     /// <summary>Keep the toolbar out of screenshots and screen shares (Teams, Zoom).</summary>
     public bool HideToolbarFromCapture { get; set; } = true;
+
+    /// <summary>Where the toolbar was left, and whether it was collapsed. Saved automatically.</summary>
+    public ToolbarSettings Toolbar { get; set; } = new();
+
+    /// <summary>A fully independent copy (changing the copy never changes this one).</summary>
+    public AppSettings Clone() => JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(this))!;
+
+    /// <summary>
+    /// Replaces every value with (a copy of) <paramref name="other"/>'s. Used to apply the Settings window's changes
+    /// to the one settings object the whole app shares, so every part sees the new values.
+    /// </summary>
+    public void CopyFrom(AppSettings other)
+    {
+        AppSettings copy = other.Clone();
+        Colors = copy.Colors;
+        PenSizes = copy.PenSizes;
+        HighlighterWidthMultiplier = copy.HighlighterWidthMultiplier;
+        Hotkeys = copy.Hotkeys;
+        ScreenshotFolder = copy.ScreenshotFolder;
+        CopyScreenshotToClipboard = copy.CopyScreenshotToClipboard;
+        HideToolbarFromCapture = copy.HideToolbarFromCapture;
+        Toolbar = copy.Toolbar;
+    }
 
     /// <summary>The 8 default colors.</summary>
     public static List<ColorSetting> DefaultColors() =>
@@ -94,6 +118,9 @@ public sealed class AppSettings
 
         ValidateHotkeys(problems);
         ValidateScreenshotFolder(problems);
+
+        // Any saved position is fine here; whether it's still on a connected monitor is checked when the toolbar opens.
+        Toolbar ??= new ToolbarSettings();
     }
 
     /// <summary>
@@ -238,6 +265,19 @@ public sealed class AppSettings
         problems.Add($"\"hotkeys.{name}\": {error} Using {defaultCombo}.");
         return defaultCombo;
     }
+}
+
+/// <summary>Toolbar placement, remembered between runs.</summary>
+public sealed class ToolbarSettings
+{
+    /// <summary>Left edge in physical screen pixels, or null for the default spot.</summary>
+    public int? X { get; set; }
+
+    /// <summary>Top edge in physical screen pixels, or null for the default spot.</summary>
+    public int? Y { get; set; }
+
+    /// <summary>True if the toolbar was collapsed to a single button.</summary>
+    public bool Collapsed { get; set; }
 }
 
 /// <summary>One palette color.</summary>

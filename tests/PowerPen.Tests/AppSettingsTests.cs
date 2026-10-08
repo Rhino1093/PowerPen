@@ -134,6 +134,47 @@ public class AppSettingsTests
         Assert.Single(_problems);
     }
 
+    /// <summary>A clone is fully independent: changing it never changes the original.</summary>
+    [Fact]
+    public void Clone_IsIndependent()
+    {
+        var original = new AppSettings();
+        AppSettings copy = original.Clone();
+
+        copy.Colors[0].Name = "Changed";
+        copy.Hotkeys.ToggleDraw = "Ctrl+Alt+P";
+        copy.Toolbar.X = 5;
+
+        Assert.Equal("Red", original.Colors[0].Name);
+        Assert.Equal("Ctrl+Alt+D", original.Hotkeys.ToggleDraw);
+        Assert.Null(original.Toolbar.X);
+    }
+
+    /// <summary>
+    /// CopyFrom copies every setting. Compared via JSON, so a setting added later but forgotten in CopyFrom fails here.
+    /// </summary>
+    [Fact]
+    public void CopyFrom_CopiesEverySetting()
+    {
+        var source = new AppSettings
+        {
+            HighlighterWidthMultiplier = 5,
+            ScreenshotFolder = @"C:\Shots",
+            CopyScreenshotToClipboard = false,
+            HideToolbarFromCapture = false,
+        };
+        source.Colors.RemoveRange(3, 5);
+        source.PenSizes.Large = 12;
+        source.Hotkeys.Quit = "";
+        source.Toolbar.X = 10;
+        source.Toolbar.Collapsed = true;
+
+        var target = new AppSettings();
+        target.CopyFrom(source);
+
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(source), System.Text.Json.JsonSerializer.Serialize(target));
+    }
+
     /// <summary>Empty, a full path, or a path with environment variables are all fine for the screenshot folder.</summary>
     [Theory]
     [InlineData("")]

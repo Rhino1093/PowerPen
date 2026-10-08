@@ -144,6 +144,20 @@ public sealed class AppCommands
     /// <summary>Exits PowerPen.</summary>
     public void Quit() => Application.Current.Shutdown();
 
+    /// <summary>Raised when the user asks for the Settings window; the app decides how to open it.</summary>
+    public event EventHandler? SettingsRequested;
+
+    /// <summary>
+    /// Opens Settings. Switches to Pointer mode first: in Draw mode the overlays catch every click,
+    /// so the Settings window would be visible but unclickable.
+    /// </summary>
+    public void OpenSettings()
+    {
+        _overlays.FinishTextEditing();
+        EnterPointerMode();
+        SettingsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>Runs the Draw-mode shortcut for a key press, if there is one.</summary>
     /// <returns><c>true</c> if the key was a shortcut (so it shouldn't be processed further).</returns>
     public bool HandleDrawModeKey(Key key, ModifierKeys modifiers)

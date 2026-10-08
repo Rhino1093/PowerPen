@@ -69,13 +69,18 @@ public sealed class HotkeyService : IDisposable
         return true;
     }
 
-    /// <summary>Unregisters all hotkeys and destroys the hidden window.</summary>
-    public void Dispose()
+    /// <summary>Releases every registered hotkey, so other apps (or a hotkey recorder) receive those keys again.</summary>
+    public void UnregisterAll()
     {
         foreach (int id in _actions.Keys)
             NativeMethods.UnregisterHotKey(_messageWindow.Handle, id);
         _actions.Clear();
+    }
 
+    /// <summary>Unregisters all hotkeys and destroys the hidden window.</summary>
+    public void Dispose()
+    {
+        UnregisterAll();
         _messageWindow.RemoveHook(WndProc);
         _messageWindow.Dispose();
     }

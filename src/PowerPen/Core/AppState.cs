@@ -12,7 +12,7 @@ namespace PowerPen.Core;
 public sealed partial class AppState : ObservableObject
 {
     /// <summary>Pen width in WPF units for each <see cref="Core.PenSize"/>, indexed by the enum value.</summary>
-    private readonly double[] _penWidths;
+    private double[] _penWidths = [];
 
     /// <summary>Creates the state from default settings (used by tests and the self-test).</summary>
     public AppState() : this(new AppSettings())
@@ -22,23 +22,16 @@ public sealed partial class AppState : ObservableObject
     /// <summary>Creates the state from <paramref name="settings"/>, which must already be validated.</summary>
     public AppState(AppSettings settings)
     {
-        Palette = settings.Colors
-            .Select(c => AppSettings.TryParseColor(c.Color, out Color color)
-                ? new NamedColor(c.Name, color)
-                : throw new ArgumentException($"Color \"{c.Color}\" wasn't validated.", nameof(settings)))
-            .ToList();
-        _penWidths = [settings.PenSizes.Small, settings.PenSizes.Medium, settings.PenSizes.Large];
-        HighlighterWidthMultiplier = settings.HighlighterWidthMultiplier;
-
+        LoadSettings(settings);
         PenSize = PenSize.Medium;
         IsInkVisible = true;
     }
 
     /// <summary>The colors shown on the toolbar.</summary>
-    public IReadOnlyList<NamedColor> Palette { get; }
+    public IReadOnlyList<NamedColor> Palette { get; private set; } = [];
 
     /// <summary>Highlighter strokes are this many times wider than pen strokes of the same size.</summary>
-    public double HighlighterWidthMultiplier { get; }
+    public double HighlighterWidthMultiplier { get; private set; }
 
     /// <summary>True while the overlays capture the mouse for drawing; false in Pointer mode.</summary>
     [ObservableProperty]
@@ -67,4 +60,33 @@ public sealed partial class AppState : ObservableObject
 
     /// <summary>Pen width in WPF units for the selected size (before the highlighter multiplier).</summary>
     public double PenWidth => _penWidths[(int)PenSize];
+
+    /// <summary>
+    /// Takes new colors and sizes from the Settings window. Everything listening (toolbar, overlays) updates right away.
+    /// </summary>
+    public void ApplySettings(AppSettings settings)
+    {
+        LoadSettings(settings);
+
+        // If the palette got shorter, the selected color may no longer exist.
+        if (ColorIndex >= Palette.Count)
+            ColorIndex = 0;
+
+        OnPropertyChanged(nameof(Palette));
+        OnPropertyChanged(nameof(CurrentColor));
+        OnPropertyChanged(nameof(PenWidth));
+        OnPropertyChanged(nameof(HighlighterWidthMultiplier));
+    }
+
+    /// <summary>Reads palette and sizes from validated settings.</summary>
+    private void LoadSettings(AppSettings settings)
+    {
+        Palette = settings.Colors
+            .Select(c => AppSettings.TryParseColor(c.Color, out Color color)
+                ? new NamedColor(c.Name, color)
+                : throw new ArgumentException($"Color \"{c.Color}\" wasn't validated.", nameof(settings)))
+            .ToList();
+        _penWidths = [settings.PenSizes.Small, settings.PenSizes.Medium, settings.PenSizes.Large];
+        HighlighterWidthMultiplier = settings.HighlighterWidthMultiplier;
+    }
 }

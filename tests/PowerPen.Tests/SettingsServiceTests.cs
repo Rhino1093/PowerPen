@@ -107,6 +107,39 @@ public sealed class SettingsServiceTests : IDisposable
         Assert.Equal(json, File.ReadAllText(SettingsPath));
     }
 
+    /// <summary>
+    /// A file that exists but can't be read (locked by an editor) gives defaults, and saving is switched off so the
+    /// user's real settings are never replaced by defaults.
+    /// </summary>
+    [Fact]
+    public void LockedFile_UsesDefaultsAndBlocksSaving()
+    {
+        string json = """{ "highlighterWidthMultiplier": 5 }""";
+        WriteFile(json);
+
+        AppSettings settings;
+        bool canSave;
+        using (new FileStream(SettingsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            settings = SettingsService.Load(SettingsPath, _problems, out canSave);
+
+        Assert.False(canSave);
+        Assert.Equal(3, settings.HighlighterWidthMultiplier);
+        Assert.Single(_problems);
+        Assert.Equal(json, File.ReadAllText(SettingsPath));
+        Assert.False(new SettingsStore(SettingsPath, canSave).TrySave(settings, out _));
+    }
+
+    /// <summary>Saving goes through a temporary file that's swapped in, and the temporary file doesn't linger.</summary>
+    [Fact]
+    public void Save_LeavesNoTemporaryFile()
+    {
+        SettingsService.Save(SettingsPath, new AppSettings());
+        SettingsService.Save(SettingsPath, new AppSettings { HighlighterWidthMultiplier = 4 });
+
+        Assert.False(File.Exists(SettingsPath + ".tmp"));
+        Assert.Equal(4, SettingsService.Load(SettingsPath, _problems).HighlighterWidthMultiplier);
+    }
+
     /// <summary>Writes raw text to the settings file.</summary>
     private void WriteFile(string text)
     {

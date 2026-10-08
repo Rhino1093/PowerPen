@@ -1,6 +1,6 @@
 # PowerPen — Build Plan
 
-**Status:** v0.10 — 2026-10-07. Phases 0–4 done. Phases 5–6 in progress.
+**Status:** v0.11 — 2026-10-07. Phases 0–4 done and manually tested. Phase 5 built and verified by automated tests. Phase 6 in progress.
 
 ---
 
@@ -220,14 +220,17 @@ Two columns, every tool one click away (about 94 × 390 at 100%):
   2. The toolbar is shorter (about 390 vs. 760 tall), so it fits on laptop screens.
   3. A flyout needs its own popup window, which brings back the focus and z-order problems the toolbar already solved.
 - Shape icons are drawn as outlines rather than font glyphs, so they show exactly the shape they draw.
-- `PowerPen.exe --render-toolbar [path.png]` renders the toolbar to images for layout checks. It draws only the toolbar and never captures the screen.
+- `PowerPen.exe --render-ui [folder]` renders the toolbar (normal, drawing, collapsed) and the Settings window to PNGs for layout checks. It draws only PowerPen's own UI and never captures the screen.
 - Floating and draggable. Remembers its position, and snaps back to the primary monitor if that screen is gone.
 - The active tool is highlighted. Tooltips show the hotkey, e.g., "Pen (P)", so people learn the keys by using the toolbar.
 - Icons come from the **Segoe Fluent Icons** font, which is built into Windows 11, so there are no image files to manage.
 - `WS_EX_NOACTIVATE`: clicking the toolbar doesn't steal focus from PowerPoint or other apps.
 - Always sits above the overlays. Topmost is re-applied after every mode change.
 
-**Tray icon menu:** Show/Hide toolbar · Settings · Open screenshots folder · Exit.
+- **Collapse (▴):** shrinks the toolbar to one pen button, which is lit while drawing. Click it to bring the toolbar back.
+- **Position memory:** the toolbar's position and collapsed state are saved. If that spot is no longer on any monitor (unplugged or rearranged), it returns to the default spot, also while running.
+
+**Tray icon menu:** Show toolbar · Settings… · Open screenshots folder · Open log folder · Exit PowerPen.
 
 ### 5.9 Settings
 
@@ -264,7 +267,10 @@ Added in Phase 4:
 ```
 An existing settings file doesn't list these until you add the lines; missing fields use the defaults above.
 
-Phase 5 will add: `toolbar` position, `startWithWindows`.
+Added in Phase 5 (saved automatically when you move or collapse the toolbar):
+```json
+  "toolbar": { "x": 40, "y": 200, "collapsed": false }   // x/y in physical pixels; null = default spot
+```
 
 **Rules**
 - The file is hand-editable: comments and trailing commas are allowed, and missing fields keep their defaults.
@@ -272,12 +278,22 @@ Phase 5 will add: `toolbar` position, `startWithWindows`.
 - **Unreadable file** (broken JSON): it's renamed to `settings.bad.json`, fresh defaults are written, and the user is told the line number.
 - **Locked file:** defaults are used for this session and the file isn't touched.
 - **Tradeoff:** every default is written into the file on first run, which makes the file easy to discover and edit. The cost is that changing a default later doesn't reach people who already have a file; they keep the old value. The `Ctrl+Alt+H` → `Ctrl+Alt+I` change hit this, and your file was regenerated. Settle the defaults before sharing in Phase 6.
-- The file is written with `+` as-is. .NET escapes it as `+` by default, which made hotkeys unreadable.
+- The file is written with `+` as-is. By default .NET escapes `+` into a six-character code, which made hotkeys unreadable.
+- **Saved safely:** each save writes a temporary file and then swaps it in, so a crash mid-save can't corrupt settings.
+- **Never overwrites unreadable settings:** if the file couldn't be read at startup, PowerPen won't save over it that session.
+- **Edited in the app (Phase 5):** the ⚙ Settings window covers colors, sizes, hotkeys (with a recorder), the screenshot folder, the clipboard and capture-hiding options, and starting with Windows.
+  - Changes apply right away, with no restart.
+  - Saving from the window rewrites the file, so any hand-written comments in it are dropped.
+- **"Start with Windows" isn't in this file.** It lives only in the per-user `Run` registry key, so it can never disagree with what Windows actually does. It also follows the exe: if the exe is moved, the box shows unticked until saved again.
 
 ### 5.10 Errors & logging
 
-- A global exception handler shows a friendly message and writes details to `%AppData%\PowerPen\logs\`. This lets you debug problems on a teammate's machine.
-- Single instance via a named Mutex. Launching PowerPen a second time just brings up the existing toolbar instead of creating duplicate overlays and hotkey conflicts.
+- **Logging:** daily log files in `%AppData%\PowerPen\logs\`, kept for 14 days. They record startup (version, Windows, each monitor), settings and hotkey problems, saves, and full error details. Logging never throws.
+- **Unexpected errors** (UI thread, background threads, background tasks) are logged. UI-thread errors also show a friendly message with the log's path, and PowerPen keeps running.
+- **Single instance:** a named mutex, scoped to the signed-in user's session. Launching PowerPen a second time signals the running copy to show its toolbar, then exits. This prevents duplicate overlays and hotkey conflicts.
+- **Tray icon** (by the clock):
+  - Left-click brings back the toolbar.
+  - The right-click menu has Show toolbar · Settings… · Open screenshots folder · Open log folder · Exit PowerPen.
 
 ---
 
@@ -330,18 +346,21 @@ PowerPen/
 ├─ src/PowerPen/
 │  ├─ PowerPen.csproj
 │  ├─ app.manifest           Per-Monitor V2 DPI awareness
-│  ├─ App.xaml(.cs)          entry point + global hotkeys
+│  ├─ App.xaml(.cs)          entry point: single instance, logging, tray, --selftest, --render-ui
 │  ├─ AppHost.cs             builds and wires the main objects (shared with the self-test)
 │  ├─ Core/                  AppState, AppCommands, ToolType, InkStyle, UndoManager, UndoActions
 │  ├─ Overlay/               OverlayManager, OverlayWindow, ShapeBuilder, ShapeTool, TextTool
 │  ├─ Capture/               ScreenCapture, ScreenshotService, RegionSelector, RegionSelectWindow, ScreenshotFiles
-│  ├─ Input/                 HotkeyService, Hotkey (parser), DrawModeKeys
-│  ├─ Settings/              AppSettings (+ validation), SettingsService · later: SettingsWindow
-│  ├─ UI/                    ToolbarWindow, ToolbarViewModel, SwatchViewModel, ToolButton, ToastWindow · later: TrayIcon
-│  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer, KnownFolders
-│  ├─ Diagnostics/           SelfTest, SyntheticInput
-│  └─ Assets/                later: PowerPen.ico
-└─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService, ShapeBuilder, ScreenshotFiles
+│  ├─ Input/                 HotkeyService, GlobalHotkeys, Hotkey (parser), DrawModeKeys
+│  ├─ Settings/              AppSettings (+ validation), SettingsService, SettingsStore
+│  ├─ UI/                    ToolbarWindow/ViewModel, SwatchViewModel, ToolButton, ToastWindow, TrayIcon,
+│  │                         SettingsWindow/ViewModel/Controller, ColorRowViewModel, HotkeyBox, Dialogs
+│  ├─ Interop/               NativeMethods, MonitorService, PixelRect, FocusRestorer, KnownFolders, StartupRegistration
+│  ├─ Diagnostics/           SelfTest, SyntheticInput, Log, VisualSnapshot
+│  └─ Assets/                PowerPen.ico (generated by tools/make-icon.ps1)
+├─ tests/PowerPen.Tests/     xUnit: UndoManager, Hotkey, DrawModeKeys, AppSettings, SettingsService, ShapeBuilder,
+│                            ScreenshotFiles, SettingsViewModel
+└─ tools/                    make-icon.ps1
 ```
 
 ---
@@ -430,10 +449,23 @@ Each phase ends with something you can run and use.
 
 **Done when:** the 📷 button produces a correct PNG for an area and for a full screen on all 3 monitors.
 
-### Phase 5 — Polish
+### Phase 5 — Polish ✅ built and verified by tests (manual test pending)
 1. Tray icon, single instance, logging, app icon.
+   - The icon is a blue rounded square with the pen symbol, generated by `tools/make-icon.ps1`.
 2. Settings window: colors, hotkey recorder (click the box, press the keys), folder picker, toolbar-in-capture toggle, start with Windows.
+   - Saving applies everything live.
+   - Global hotkeys are paused while the window is open, because Windows would otherwise swallow the combinations before the recorder sees them.
+   - Invalid values are listed in the window, and nothing is saved until they're fixed.
 3. Toolbar collapse and position memory.
+4. Unit tests (115 total) add the Settings window logic, settings cloning/copying (which catches any setting forgotten in `CopyFrom`), and the locked-file and atomic-save cases.
+5. Self-test "Toolbar and settings" section, all in memory:
+   - settings apply live;
+   - capture-hiding can be switched off and on while running;
+   - collapse and expand work with real clicks.
+6. ⚠ **Night light breaks exact-color checks:** in the evening, every pixel check failed. An A/B test showed the Phase 4 build failed the same way, so it wasn't a code regression. The cause is Windows Night light: on this PC it's applied *before* capture, so magenta (255,0,254) was captured as (224,1,93).
+   - The self-test now measures what the marker color looks like in captures before checking, and fails if the marker can't be seen at all.
+   - **Product effect:** screenshots taken while Night light is on carry its warm tint on this setup. Windows applies it before PowerPen sees the pixels, so PowerPen can't fix it. Documented in the README.
+7. Real-app smoke test: start; a second launch hands over and exits; `Ctrl+Alt+Q` closes; the log shows a clean start and close.
 
 ### Phase 6 — Package & share
 1. Publish a single `.exe` (see §10).
@@ -458,6 +490,7 @@ Each phase ends with something you can run and use.
 | Exclusive full-screen apps (some games and video players) cover the overlay | Inherent | Not supported |
 | Clipboard locked by another app | Low | Retry 3×; the file is still saved either way |
 | SmartScreen warning on first run of a downloaded `.exe` | Low | Confirmed that teammates can run unsigned exes. Tell them to click *More info → Run anyway* once. |
+| Night light (or HDR / color profiles) tints screenshots on some setups | Low | Windows applies it before capture on this PC; it can't be undone in PowerPen. Documented in the README. The self-test adapts to it. |
 
 ---
 

@@ -6,12 +6,18 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <!-- WinForms is only used for the tray icon and System.Drawing screen capture. -->
+    <!-- WinForms is only used for the tray icon, the color picker, and System.Drawing screen capture. -->
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\PowerPen.ico</ApplicationIcon>
     <!-- WFO0003 tells WinForms apps to set DPI mode in code instead of the manifest. This is a WPF app,
          and WPF only reads DPI awareness from the manifest, so the warning doesn't apply. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
+
+    <!-- Shown in the tray tooltip, the log, and the exe's Properties → Details. -->
+    <Version>1.0.0</Version>
+    <Product>PowerPen</Product>
+    <Description>Draw on your screen, then screenshot it.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +25,11 @@
          global usings so those names always mean the WPF version; files that need System.Drawing import it explicitly. -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded so windows and the tray icon can load it (pack://application:,,,/Assets/PowerPen.ico). -->
+    <Resource Include="Assets\PowerPen.ico" />
   </ItemGroup>
 
   <ItemGroup>

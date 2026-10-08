@@ -24,14 +24,22 @@ public static class SettingsService
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>Loads settings (see the overload with <c>canSave</c>).</summary>
+    public static AppSettings Load(string path, List<string> problems) => Load(path, problems, out _);
+
     /// <summary>
     /// Loads settings. Never throws: a missing file is created with defaults, an unreadable file is set aside as
     /// settings.bad.json, and invalid values are replaced with defaults. Each fix is described in <paramref name="problems"/>.
     /// </summary>
     /// <param name="path">The settings file.</param>
     /// <param name="problems">Receives user-friendly descriptions of anything that had to be fixed.</param>
-    public static AppSettings Load(string path, List<string> problems)
+    /// <param name="canSave">
+    /// False if PowerPen must not write the file this session, e.g. it exists but couldn't be read (locked by an editor).
+    /// Saving then would replace the user's settings with defaults.
+    /// </param>
+    public static AppSettings Load(string path, List<string> problems, out bool canSave)
     {
+        canSave = true;
         AppSettings? settings = null;
 
         if (File.Exists(path))
@@ -54,6 +62,7 @@ public static class SettingsService
                 catch (Exception moveError) when (moveError is IOException or UnauthorizedAccessException)
                 {
                     problems.Add($"The settings file has a mistake{where}. Using default settings until it's fixed.");
+                    canSave = false;
                     return Validated(new AppSettings(), problems);
                 }
             }
@@ -61,6 +70,7 @@ public static class SettingsService
             {
                 // The file exists but can't be opened (e.g. locked by an editor). Don't overwrite it.
                 problems.Add($"The settings file couldn't be opened ({ex.Message}). Using default settings for now.");
+                canSave = false;
                 return Validated(new AppSettings(), problems);
             }
         }
@@ -76,17 +86,23 @@ public static class SettingsService
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 problems.Add($"The settings file couldn't be created ({ex.Message}). PowerPen will use default settings.");
+                canSave = false;
             }
         }
 
         return Validated(settings, problems);
     }
 
-    /// <summary>Writes settings to <paramref name="path"/>, creating the folder if needed.</summary>
+    /// <summary>
+    /// Writes settings to <paramref name="path"/>, creating the folder if needed. Writes a temporary file first and
+    /// then swaps it in, so a crash or power cut mid-save can never leave a half-written settings file.
+    /// </summary>
     public static void Save(string path, AppSettings settings)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(settings, JsonOptions));
+        string temporaryPath = path + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, JsonOptions));
+        File.Move(temporaryPath, path, overwrite: true);
     }
 
     /// <summary>Validates <paramref name="settings"/> and returns it.</summary>
