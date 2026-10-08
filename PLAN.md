@@ -1,6 +1,11 @@
 # PowerPen — Build Plan
 
-**Status:** v0.11 — 2026-10-07. Phases 0–4 done and manually tested. Phase 5 built and verified by automated tests. Phase 6 in progress.
+**Status:** v1.0 — 2026-10-07. All six phases built.
+- Phases 0–4: manually tested.
+- Phases 5–6: verified by automated tests (115 unit tests, full self-test, real-app smoke test, the published exe itself).
+- Still open, both for you:
+  - a manual pass over the Phase 5 features;
+  - the mixed-scaling self-test and a teammate-PC test (Phase 6, steps 2–3).
 
 ---
 
@@ -341,7 +346,9 @@ Added in Phase 5 (saved automatically when you move or collapse the toolbar):
 ```
 PowerPen/
 ├─ PLAN.md
-├─ README.md                 user guide + hotkey cheat sheet (Phase 6)
+├─ README.md                 user guide + hotkey cheat sheet
+├─ publish.ps1               builds publish/PowerPen.exe + zip (output folder is git-ignored)
+├─ .gitattributes            LF line endings
 ├─ PowerPen.slnx
 ├─ src/PowerPen/
 │  ├─ PowerPen.csproj
@@ -467,13 +474,17 @@ Each phase ends with something you can run and use.
    - **Product effect:** screenshots taken while Night light is on carry its warm tint on this setup. Windows applies it before PowerPen sees the pixels, so PowerPen can't fix it. Documented in the README.
 7. Real-app smoke test: start; a second launch hands over and exits; `Ctrl+Alt+Q` closes; the log shows a clean start and close.
 
-### Phase 6 — Package & share
-1. Publish a single `.exe` (see §10).
-2. **Gate:** set one monitor to a different scaling and run `--selftest`.
+### Phase 6 — Package & share 🔨 built; your two checks remain
+1. ✅ Publish a single `.exe` (see §10).
+   - `publish.ps1` produces `publish/PowerPen.exe` (72 MB) and `PowerPen-1.0.0.zip` (exe + README, 67 MB).
+   - The **published** exe passed the full self-test and the real-app smoke test (start, single instance, `Ctrl+Alt+Q`, log). It's ready to use about 1 s after launch.
+2. ⏳ **Gate (you):** set one monitor to a different scaling and run `publish\PowerPen.exe --selftest`.
    - Mixed scaling was verified by hand at 150% on 2026-10-07 (Phase 1).
    - Re-check anyway, because Phases 3–5 add new windows (region select, toast, settings) that also need correct placement.
-3. Test on a teammate's machine that has no .NET installed and a different monitor setup.
-4. Write `README.md` with a hotkey cheat sheet.
+3. ⏳ **(You)** Test on a teammate's machine that has no .NET installed and a different monitor setup.
+4. ✅ Write `README.md`: install, toolbar, hotkey cheat sheet, screenshots, settings, tips and limits, troubleshooting (with self-test steps), uninstall, developer commands.
+5. ✅ The self-test refuses to run while PowerPen is open (exit code 2, with a message saying to close it first), because two toolbars in the same spot would give confusing results.
+6. ✅ `.gitattributes` normalizes line endings (LF), which silences git's CRLF warnings.
 
 ---
 
@@ -497,15 +508,18 @@ Each phase ends with something you can run and use.
 ## 10. Distribution
 
 ```powershell
-dotnet publish src/PowerPen -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true
+powershell -ExecutionPolicy Bypass -File publish.ps1
 ```
+
+It runs `dotnet publish` as self-contained `win-x64`, single file with native libraries inside, compressed, and without debug symbols. It then copies the README and zips both.
 
 | Option | Size | Needs .NET installed? |
 |---|---|---|
-| **Self-contained single file** (recommended) | Tens of MB (measure in Phase 6) | No |
+| **Self-contained single file** (used) | **72 MB exe, 67 MB zip** (measured) | No |
 | Framework-dependent | ~1 MB | Yes, the .NET 10 Desktop Runtime |
+
+- **Why it's large:** it carries the .NET runtime, WPF, and WinForms (for the tray icon and color picker). Trimming isn't supported for WPF apps.
+- **Sharing:** send the zip (Teams, OneDrive, or a network share).
 
 The exe is unsigned, so the first run of a file downloaded through Teams, email, or OneDrive shows "Windows protected your PC" (click *More info → Run anyway*). Company policy allows unsigned exes.
 

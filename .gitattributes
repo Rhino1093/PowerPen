@@ -1,0 +1,8 @@
+# Store and check out text files with LF line endings everywhere. This matches how the files are written and
+# stops git's "LF will be replaced by CRLF" warnings. Visual Studio, VS Code, Notepad, and PowerShell all handle LF.
+* text=auto eol=lf
+
+# Never touch binary files.
+*.ico binary
+*.png binary
+*.zip binary

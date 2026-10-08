@@ -49,7 +49,19 @@ public partial class App : Application
         {
             case "--selftest":
                 _isSelfTest = true;
-                RunSelfTest(argument ?? Path.Combine(Path.GetTempPath(), "PowerPen-selftest.txt"));
+                string reportPath = argument ?? Path.Combine(Path.GetTempPath(), "PowerPen-selftest.txt");
+                if (Mutex.TryOpenExisting(SingleInstanceName, out Mutex? running))
+                {
+                    // A running PowerPen's toolbar and overlays would sit in the same places as the test's and
+                    // confuse the results (the test never clicks another copy's windows, it just can't check its own).
+                    running.Dispose();
+                    File.WriteAllText(reportPath,
+                        "PowerPen is running. Close it first (right-click the PowerPen icon by the clock → Exit PowerPen), then run the self-test again.",
+                        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                    Shutdown(2);
+                    return;
+                }
+                RunSelfTest(reportPath);
                 return;
             case "--render-ui":
                 RenderUi(argument ?? Path.GetTempPath());
