@@ -2,7 +2,7 @@
 
 Draw on top of anything on your screen, on any monitor, then take a screenshot of it. A free, lightweight screen annotation tool for Windows, in the style of Epic Pen.
 
-<!-- TODO before release: add a screenshot or short GIF here, e.g. ![PowerPen in action](docs/demo.gif) -->
+![Writing on screen with the PowerPen pen tool](docs/demo-pen.gif)
 
 - Pen, highlighter, eraser, lines, arrows, rectangles, ellipses, and text
 - Works across multiple monitors, including mixed display scaling
@@ -36,6 +36,16 @@ PowerPen has two modes:
 
 - When you stop drawing, the app you were using gets the keyboard back. For example, a PowerPoint slideshow keeps responding to the arrow keys.
 - Undo covers every monitor. **Clear all** can be undone too.
+
+### See it in action
+
+Lines, arrows, and rectangles:
+
+![Drawing a line, an arrow, and a rectangle](docs/demo-shapes.gif)
+
+Ellipses and text:
+
+![Drawing an ellipse and typing text](docs/demo-text.gif)
 
 ---
 
