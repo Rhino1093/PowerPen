@@ -1,16 +1,27 @@
 # PowerPen
 
-Draw on top of anything on your screen, on any monitor, then take a screenshot of it.
+Draw on top of anything on your screen, on any monitor, then take a screenshot of it. A free, lightweight screen annotation tool for Windows, in the style of Epic Pen.
+
+<!-- TODO before release: add a screenshot or short GIF here, e.g. ![PowerPen in action](docs/demo.gif) -->
+
+- Pen, highlighter, eraser, lines, arrows, rectangles, ellipses, and text
+- Works across multiple monitors, including mixed display scaling
+- Global hotkeys, plus single-key shortcuts while drawing
+- Screenshot an area or a whole screen, with your drawing included
+- One `.exe`: no installer, no admin rights, no .NET install, no network access
+
+**Requirements:** 64-bit Windows 10 or 11.
 
 ---
 
 ## Install
 
-1. Copy **PowerPen.exe** anywhere you like, for example `Documents\Tools`. There's no installer, and you don't need admin rights or .NET.
-2. Double-click it.
-   - If Windows says **"Windows protected your PC"** (it does this the first time for downloaded apps), click **More info → Run anyway**.
-3. The toolbar appears at the top-left of your main monitor, and the PowerPen icon appears by the clock.
-4. Optional: ⚙ Settings → **Start PowerPen when Windows starts**.
+1. Download `PowerPen-<version>.zip` from the [latest release](https://github.com/Rhino1093/PowerPen/releases/latest) and unzip it.
+2. Copy **PowerPen.exe** anywhere you like, for example `Documents\Tools`.
+3. Double-click it.
+   - The exe isn't code-signed, so Windows shows **"Windows protected your PC"** the first time. Click **More info → Run anyway**.
+4. The toolbar appears at the top-left of your main monitor, and the PowerPen icon appears by the clock.
+5. Optional: ⚙ Settings → **Start PowerPen when Windows starts**.
 
 ---
 
@@ -74,6 +85,9 @@ PowerPen has two modes:
 | `R` | Rectangle | `Shift` while dragging | Straight / square / circle |
 | `O` | Ellipse | `T` | Text |
 
+- `Ctrl+Alt+D` only switches between drawing and Pointer. It keeps whichever tool you used last, so if you switched to the eraser, you'll come back to the eraser. Press `P` to get the pen back.
+- **Pen tablets:** map a tablet button to `Ctrl+Alt+D` and the pen buttons to `P` and `E` to switch between pen and eraser.
+
 ---
 
 ## Screenshots
@@ -83,7 +97,7 @@ PowerPen has two modes:
    - **Drag** to capture an area. The size in pixels is shown as you drag.
    - **Click** to capture that whole screen. This works on any monitor.
    - **Esc** or **right-click** cancels.
-3. The picture is saved as a PNG in your **Downloads** folder (for example `PowerPen_2026-10-07_143205.png`) and copied to the clipboard, so you can paste it straight into Teams or email.
+3. The picture is saved as a PNG in your **Downloads** folder (for example `PowerPen_2026-10-07_143205.png`) and copied to the clipboard, so you can paste it straight into chat or email.
 4. A notice appears in the corner. Click it to open the folder.
 
 The toolbar never appears in screenshots or in Teams/Zoom screen sharing. You can turn this off in Settings.
@@ -100,6 +114,8 @@ Open them with **⚙** on the toolbar, or right-click the PowerPen icon by the c
 - **Screenshots:** the save folder (empty = Downloads), copy to clipboard, and hide the toolbar from captures.
 - **Start with Windows.**
 
+Settings are stored in `%AppData%\PowerPen\settings.json`.
+
 ---
 
 ## Tips and limits
@@ -111,6 +127,8 @@ Open them with **⚙** on the toolbar, or right-click the PowerPen icon by the c
 - **Full-screen games and some video players** can cover the drawing.
 - **Night light** (and some HDR or color settings) can be included in screenshots. On some PCs, Windows applies the warm tint before any app can capture the screen, so screenshots taken while Night light is on look warmer.
 - **Non-US keyboards:** on many European layouts `Ctrl+Alt+number` types characters like `@` or `{`. Change the color hotkeys in Settings, for example to Ctrl+Alt+Shift.
+- **Global hotkeys win over app shortcuts.** While PowerPen runs, Word's `Ctrl+Alt+1/2/3` (headings) and `Ctrl+Alt+C` (©) go to PowerPen. Change them in Settings if you need them.
+- **Pen pressure** works but PowerPen was built and tested mainly with a mouse.
 
 ---
 
@@ -125,11 +143,11 @@ Click the PowerPen icon by the clock, or just start PowerPen again.
 **Something else**
 1. Right-click the PowerPen icon → **Exit PowerPen**.
 2. Press `Win+R` and enter `"C:\path\to\PowerPen.exe" --selftest`. It takes about 30 seconds and moves the mouse by itself. Don't touch the mouse or keyboard until it's done.
-3. Send these to whoever gave you PowerPen:
+3. [Open an issue](https://github.com/Rhino1093/PowerPen/issues) describing what happened, and attach:
    - the report, `%TEMP%\PowerPen-selftest.txt`;
    - the logs: right-click the PowerPen icon → **Open log folder**.
 
-The self-test never saves pictures of your screen and never touches your clipboard.
+The self-test never saves pictures of your screen and never touches your clipboard. The report and logs contain your Windows version, monitor layout, and file paths (which can include your Windows username). Look them over before attaching.
 
 **Reset everything**
 Exit PowerPen and delete `%AppData%\PowerPen\settings.json`.
@@ -146,14 +164,22 @@ Exit PowerPen and delete `%AppData%\PowerPen\settings.json`.
 
 ## For developers
 
+**Prerequisites:** Windows 10/11 and the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). Built with WPF (`InkCanvas`) and [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet).
+
 | Task | Command |
 |---|---|
 | Build | `dotnet build PowerPen.slnx` |
-| Unit tests | `dotnet test` |
+| Unit tests | `dotnet test PowerPen.slnx` |
 | Run | `dotnet run --project src/PowerPen` |
 | Self-test (real input, all monitors) | `PowerPen.exe --selftest [report.txt]` |
 | Render the UI to PNGs (layout checks) | `PowerPen.exe --render-ui [folder]` |
-| Build the shareable exe + zip | `powershell -ExecutionPolicy Bypass -File publish.ps1` |
+| Build the release exe + zip | `powershell -ExecutionPolicy Bypass -File publish.ps1` |
 | Regenerate the app icon | `powershell -STA -ExecutionPolicy Bypass -File tools\make-icon.ps1` |
 
-The design, decisions, and history are in [PLAN.md](PLAN.md).
+The design, decisions, and build history are in [PLAN.md](PLAN.md).
+
+---
+
+## License
+
+[MIT](LICENSE). Free to use, change, and share.

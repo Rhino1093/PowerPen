@@ -311,7 +311,7 @@ public sealed class HotkeySettings
     /// <summary>Switch between Draw and Pointer mode.</summary>
     public string ToggleDraw { get; set; } = "Ctrl+Alt+D";
 
-    /// <summary>Hide or show all ink ("I" for ink). Not Ctrl+Alt+H: another app on the company image already owns it.</summary>
+    /// <summary>Hide or show all ink ("I" for ink). Not Ctrl+Alt+H: other apps often own it already.</summary>
     public string ToggleInkVisible { get; set; } = "Ctrl+Alt+I";
 
     /// <summary>Clear all ink.</summary>

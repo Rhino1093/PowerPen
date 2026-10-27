@@ -3,15 +3,15 @@
 **Status:** v1.0 — 2026-10-07. All six phases built.
 - Phases 0–4: manually tested.
 - Phases 5–6: verified by automated tests (115 unit tests, full self-test, real-app smoke test, the published exe itself).
-- Still open, both for you:
+- Not yet done:
   - a manual pass over the Phase 5 features;
-  - the mixed-scaling self-test and a teammate-PC test (Phase 6, steps 2–3).
+  - the mixed-scaling self-test with the published exe, and a test on a second PC (Phase 6, steps 2–3).
 
 ---
 
 ## 1. Goal
 
-A personal Epic Pen Pro–style screen annotation tool for Windows. Draw on top of everything, on any monitor, then screenshot the result. Shared with a few teammates. Not a product.
+A personal Epic Pen Pro–style screen annotation tool for Windows. Draw on top of everything, on any monitor, then screenshot the result. Started as a personal tool; shared as-is.
 
 **Guiding rules**
 1. The toolbar is dead simple: one click per action, and every tooltip shows its hotkey.
@@ -86,11 +86,11 @@ A personal Epic Pen Pro–style screen annotation tool for Windows. Draw on top 
 - **Why not one giant window?** A WPF window can only have one scaling (DPI) value. With a laptop at 150% and a monitor at 100%, one of them would be scaled wrong. Each per-monitor window gets its own DPI, and smaller transparent windows also render faster.
 - **Tradeoff:** a single stroke can't cross from one monitor to the next. That's acceptable.
 - **Note on "multiple resolutions":** the real problem is different **scaling %**, not resolution. Resolution alone is easy.
-- **Your setup:** 3 monitors, all at 100%:
+- **Dev setup:** 3 monitors, all at 100%:
   - 2560×1440 (main)
   - 1920×1080 to the right
   - 1080×1920 **portrait** to the left, at negative coordinates
-  This never exercises mixed scaling, but teammates' laptops (usually 125–150%) will. Verified by hand with one monitor at 150% (2026-10-07).
+  This never exercises mixed scaling, but most laptops (usually 125–150%) will. Verified by hand with one monitor at 150% (2026-10-07).
 
 **Recipe**
 1. Make the app Per-Monitor V2 DPI aware in `app.manifest`.
@@ -145,10 +145,10 @@ There are two layers. Global single-letter hotkeys would break typing in every o
 - All global hotkeys are set in `settings.json` (§5.9). An empty value turns a hotkey off.
 - Validation catches invalid combos, duplicates, and collisions with the color hotkeys, and explains each one.
 - ⚠ **F12 is rejected.** Microsoft's docs reserve it for debuggers: registering it succeeds, but it may never fire. The Phase 2 self-test hit exactly this.
-- ⚠ **Taken on the company image** (probed 2026-10-07): `Ctrl+Alt+H` and `Ctrl+Alt+M` are owned by another app. That's why hide/show ink is `Ctrl+Alt+I` ("I" for ink). Every `Ctrl+Alt+Shift+letter/digit` was free.
+- ⚠ **Taken on the dev PC** (probed 2026-10-07): `Ctrl+Alt+H` and `Ctrl+Alt+M` are owned by another app. That's why hide/show ink is `Ctrl+Alt+I` ("I" for ink). Every `Ctrl+Alt+Shift+letter/digit` was free.
 - ⚠ **Global hotkeys override app shortcuts.** While PowerPen runs, Word's `Ctrl+Alt+1/2/3` (Heading 1–3) and `Ctrl+Alt+C` (©) go to PowerPen instead. If that matters to you, set `colorModifiers` to `Ctrl+Alt+Shift`.
   - Decision (2026-10-07): keep `Ctrl+Alt+1–8`.
-- ⚠ **Non-US keyboards:** on many European layouts `Ctrl+Alt+digit` is AltGr, which types characters like `@`, `{`, `[`. If a teammate uses one, change `colorModifiers` (e.g., to `Ctrl+Alt+Shift`) or set it to empty.
+- ⚠ **Non-US keyboards:** on many European layouts `Ctrl+Alt+digit` is AltGr, which types characters like `@`, `{`, `[`. On those, change `colorModifiers` (e.g., to `Ctrl+Alt+Shift`) or set it to empty.
 
 **Draw mode only** (plain keys; ignored while typing in a text box)
 
@@ -386,7 +386,7 @@ Each phase ends with something you can run and use.
    - WPF is using that monitor's DPI;
    - the ink shows up in a BitBlt capture;
    - clicks pass through in Pointer mode and are caught in Draw mode.
-   Screenshots are checked in memory only and never saved. Keep this as a diagnostic for teammates' machines.
+   Screenshots are checked in memory only and never saved. Keep this as a diagnostic for other people's machines.
 6. Manual: check drawing lag on the 2560×1440 monitor.
 
 **Done when:** the self-test passes on every monitor, and drawing by hand feels lag-free.
@@ -474,14 +474,14 @@ Each phase ends with something you can run and use.
    - **Product effect:** screenshots taken while Night light is on carry its warm tint on this setup. Windows applies it before PowerPen sees the pixels, so PowerPen can't fix it. Documented in the README.
 7. Real-app smoke test: start; a second launch hands over and exits; `Ctrl+Alt+Q` closes; the log shows a clean start and close.
 
-### Phase 6 — Package & share 🔨 built; your two checks remain
+### Phase 6 — Package & share 🔨 built; two manual checks remain
 1. ✅ Publish a single `.exe` (see §10).
    - `publish.ps1` produces `publish/PowerPen.exe` (72 MB) and `PowerPen-1.0.0.zip` (exe + README, 67 MB).
    - The **published** exe passed the full self-test and the real-app smoke test (start, single instance, `Ctrl+Alt+Q`, log). It's ready to use about 1 s after launch.
-2. ⏳ **Gate (you):** set one monitor to a different scaling and run `publish\PowerPen.exe --selftest`.
+2. ⏳ **Open:** set one monitor to a different scaling and run `publish\PowerPen.exe --selftest`.
    - Mixed scaling was verified by hand at 150% on 2026-10-07 (Phase 1).
    - Re-check anyway, because Phases 3–5 add new windows (region select, toast, settings) that also need correct placement.
-3. ⏳ **(You)** Test on a teammate's machine that has no .NET installed and a different monitor setup.
+3. ⏳ **Open:** test on a second PC that has no .NET installed and a different monitor setup.
 4. ✅ Write `README.md`: install, toolbar, hotkey cheat sheet, screenshots, settings, tips and limits, troubleshooting (with self-test steps), uninstall, developer commands.
 5. ✅ The self-test refuses to run while PowerPen is open (exit code 2, with a message saying to close it first), because two toolbars in the same spot would give confusing results.
 6. ✅ `.gitattributes` normalizes line endings (LF), which silences git's CRLF warnings.
@@ -492,7 +492,7 @@ Each phase ends with something you can run and use.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Overlay offset or wrong size on mixed-scaling monitors | **High** for teammates' laptops | Place windows in physical pixels and re-place them after `DpiChanged`. Your monitors are all 100%, so set one to 125% temporarily and run `--selftest`. |
+| Overlay offset or wrong size on mixed-scaling monitors | **High** for laptops | Place windows in physical pixels and re-place them after `DpiChanged`. The dev monitors are all 100%, so set one to 125% temporarily and run `--selftest`. |
 | Full-screen transparent windows lag on 4K | Medium | Measure in Phase 0. Fallback: a different transparency technique (DWM-based). Only if needed. |
 | Draw mode steals focus (slideshow stops reacting to arrow keys) | Medium | Remember the foreground window and restore it on exit. Toolbar uses `NOACTIVATE`. |
 | Toolbar ends up behind the overlays | Low | Re-apply topmost order on every mode change |
@@ -500,7 +500,7 @@ Each phase ends with something you can run and use.
 | Teams/Zoom **"share a window"** won't show the ink | Inherent | Share the **whole screen**. Epic Pen has the same limit. Document it in the README. |
 | Exclusive full-screen apps (some games and video players) cover the overlay | Inherent | Not supported |
 | Clipboard locked by another app | Low | Retry 3×; the file is still saved either way |
-| SmartScreen warning on first run of a downloaded `.exe` | Low | Confirmed that teammates can run unsigned exes. Tell them to click *More info → Run anyway* once. |
+| SmartScreen warning on first run of a downloaded `.exe` | Low | Code signing costs money and isn't planned. The README tells users to click *More info → Run anyway* once. |
 | Night light (or HDR / color profiles) tints screenshots on some setups | Low | Windows applies it before capture on this PC; it can't be undone in PowerPen. Documented in the README. The self-test adapts to it. |
 
 ---
@@ -511,7 +511,7 @@ Each phase ends with something you can run and use.
 powershell -ExecutionPolicy Bypass -File publish.ps1
 ```
 
-It runs `dotnet publish` as self-contained `win-x64`, single file with native libraries inside, compressed, and without debug symbols. It then copies the README and zips both.
+It runs `dotnet publish` as self-contained `win-x64`, single file with native libraries inside, compressed, and without debug symbols. It then copies the README and LICENSE and zips all three.
 
 | Option | Size | Needs .NET installed? |
 |---|---|---|
@@ -519,9 +519,9 @@ It runs `dotnet publish` as self-contained `win-x64`, single file with native li
 | Framework-dependent | ~1 MB | Yes, the .NET 10 Desktop Runtime |
 
 - **Why it's large:** it carries the .NET runtime, WPF, and WinForms (for the tray icon and color picker). Trimming isn't supported for WPF apps.
-- **Sharing:** send the zip (Teams, OneDrive, or a network share).
+- **Sharing:** attach the zip to a GitHub release.
 
-The exe is unsigned, so the first run of a file downloaded through Teams, email, or OneDrive shows "Windows protected your PC" (click *More info → Run anyway*). Company policy allows unsigned exes.
+The exe is unsigned, so the first run of a downloaded copy shows "Windows protected your PC" (click *More info → Run anyway*).
 
 ---
 
@@ -536,7 +536,7 @@ Answered 2026-10-07.
 | 3 | Toolbar in Teams shares and screenshots | **Hidden from both.** |
 | 4 | Screenshot / save hotkeys | **None.** The 📷 toolbar button only. It always saves to Downloads and copies to the clipboard. |
 | 5 | Pointer mode keeps ink on screen | **Yes.** |
-| 6 | Teammates can run an unsigned `.exe` | **Yes.** |
+| 6 | Ship an unsigned `.exe` | **Yes.** |
 | 7 | "Text" | **Typed text**, not handwriting-to-text. |
 | 8 | Other hotkey defaults (§5.6) | Kept as proposed. All are changeable in Settings. |
 

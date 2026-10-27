@@ -3,7 +3,7 @@ using System.IO;
 namespace PowerPen.Diagnostics;
 
 /// <summary>
-/// Simple daily log files in %AppData%\PowerPen\logs, for figuring out problems on a teammate's PC.
+/// Simple daily log files in %AppData%\PowerPen\logs, for figuring out problems on someone else's PC.
 /// Logging never throws: failing to write a log line must never break the app.
 /// </summary>
 public static class Log
